@@ -349,6 +349,7 @@ const SAID: Record<string, string> = {
   "browser_tools.no_enabled": "本次请求未说明开关状态，未做任何修改",
   "display_currency.invalid": "不支持这个币种，只能选自动、CNY 或 USD：{detail}",
   "display_currency.save_failed": "费用显示币种未能保存：{detail}",
+  "receipt.save_failed": "交付验收卡片的设置未能保存：{detail}",
   "progress_watch.save_failed": "无进展设置未能保存：{detail}",
   "workspace.untrustable": "主目录或磁盘根目录不能整体信任，请打开具体的项目文件夹",
   "workspace.trust_save_failed": "未能记下对此文件夹的信任决定：{detail}",

@@ -61,6 +61,8 @@ var English = Messages{
 	NoticeCompactFailedFmt:   "Compaction failed: %s",
 	NoticeCompactHeldFmt:     "Automatic compaction is paused, the last attempt did not finish: %s",
 	ReceiptGapKinds: map[string]string{
+		"hint:gaps":                 "changes left unverified",
+		"hint:declared":             "this turn declared risks or unverified items",
 		"unbacked_claim":            "claimed but unsupported",
 		"unproven_criterion":        "criterion without proof",
 		"missing_check":             "expected check never passed",

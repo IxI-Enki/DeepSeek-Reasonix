@@ -9,11 +9,14 @@ import { Settings } from "./Settings";
 import { MockPort } from "../port/mock";
 import { MockHub } from "../port/mock_hub";
 import { boot, STORAGE, t } from "../i18n";
-import { setShowsReceipt, showsReceipt } from "../state/prefs";
+import { loadReceiptPref, receiptPrefOf, showsReceipt } from "../state/prefs";
+import { ReceiptPrefContext } from "../state/foldpref";
+const adoptReceiptPref = (on: boolean) => receiptPrefOf().adopt(on ? "on" : "off");
 import type { Item } from "../state/session";
 import type { AgentPort, SessionStatus } from "../port/port";
 
 beforeEach(() => {
+  adoptReceiptPref(false);
   localStorage.clear();
   localStorage.setItem(STORAGE, "zh");
   boot();
@@ -81,34 +84,27 @@ describe("the delivery receipt card is a display choice", () => {
 
   it("is the card or the line, never both", () => {
     render(transcript(items));
-    act(() => setShowsReceipt(true));
+    act(() => adoptReceiptPref(true));
     expect(card()).not.toBeNull();
     expect(hint()).toBeNull();
-    act(() => setShowsReceipt(false));
+    act(() => adoptReceiptPref(false));
     expect(card()).toBeNull();
     expect(hint()).not.toBeNull();
   });
 
   it("appears and disappears as the preference flips, on a transcript already drawn", () => {
     render(transcript(items));
-    act(() => setShowsReceipt(true));
+    act(() => adoptReceiptPref(true));
     expect(card()).not.toBeNull();
-    act(() => setShowsReceipt(false));
+    act(() => adoptReceiptPref(false));
     expect(card()).toBeNull();
   });
 
-  it("is there on a reloaded transcript when the preference is on", () => {
-    localStorage.setItem("rx-turn-receipt", "on");
+  it("is there on a transcript drawn after the preference is read as on", () => {
+    adoptReceiptPref(true);
     render(transcript(items));
     expect(card()).not.toBeNull();
   });
-
-  it("keeps a saved off as off", () => {
-    localStorage.setItem("rx-turn-receipt", "off");
-    render(transcript(items));
-    expect(card()).toBeNull();
-  });
-
 });
 
 describe("find", () => {
@@ -116,9 +112,9 @@ describe("find", () => {
     const { result } = renderHook(() => useFind(items, 1, true, () => {}));
     act(() => result.current.ask("ruff"));
     expect(result.current.total).toBe(0);
-    act(() => setShowsReceipt(true));
+    act(() => adoptReceiptPref(true));
     expect(result.current.total).toBeGreaterThan(0);
-    act(() => setShowsReceipt(false));
+    act(() => adoptReceiptPref(false));
     expect(result.current.total).toBe(0);
   });
 });
@@ -134,14 +130,111 @@ describe("the setting", () => {
       look={{} as never} onLook={() => {}} reloadThemes={() => {}}
       onClose={() => {}} onChanged={() => {}} onError={() => {}} at="session"
       account={null} accountUnread="" reloadAccount={() => {}}
-    /> {transcript(items)}</>);
+    /> <ReceiptPrefContext.Provider value={receiptPrefOf(port)}>{transcript(items)}</ReceiptPrefContext.Provider></>);
     const sw = await screen.findByRole("switch", { name: t("显示交付验收卡片") });
     expect(sw.getAttribute("aria-checked")).toBe("false");
     expect(card()).toBeNull();
     await userEvent.click(sw);
     expect(sw.getAttribute("aria-checked")).toBe("true");
     expect(card()).not.toBeNull();
+    expect((await port.receiptSettings()).show).toBe(true);
     await userEvent.click(sw);
     expect(card()).toBeNull();
+    expect((await port.receiptSettings()).show).toBe(false);
+  });
+
+  it("puts the switch back and says why when the kernel refuses the save", async () => {
+    vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(null);
+    const mock = new MockPort();
+    vi.spyOn(mock, "saveReceiptSettings").mockRejectedValue(new Error("disk full"));
+    const port = mock as unknown as AgentPort;
+    render(<Settings
+      hub={new MockHub() as never} port={port}
+      status={{ preset: "balanced", toolApprovalMode: "ask" } as SessionStatus}
+      theme="light" onTheme={() => {}} contrast="" onContrast={() => {}} weight="" onWeight={() => {}}
+      look={{} as never} onLook={() => {}} reloadThemes={() => {}}
+      onClose={() => {}} onChanged={() => {}} onError={() => {}} at="session"
+      account={null} accountUnread="" reloadAccount={() => {}}
+    />);
+    const sw = await screen.findByRole("switch", { name: t("显示交付验收卡片") });
+    await userEvent.click(sw);
+    expect(await screen.findByText(/disk full/)).toBeTruthy();
+    expect(sw.getAttribute("aria-checked")).toBe("false");
+  });
+});
+
+describe("the setting lives in the kernel", () => {
+  it("is read from the kernel's answer", async () => {
+    const port = new MockPort();
+    await port.saveReceiptSettings(true);
+    await loadReceiptPref(port, true);
+    expect(showsReceipt(port)).toBe(true);
+  });
+
+  it("carries an old on from this browser to the kernel once, then drops the old key", async () => {
+    localStorage.setItem("rx-turn-receipt", "on");
+    const port = new MockPort();
+    await loadReceiptPref(port, true);
+    expect((await port.receiptSettings()).show).toBe(true);
+    expect(showsReceipt(port)).toBe(true);
+    expect(localStorage.getItem("rx-turn-receipt")).toBeNull();
+  });
+
+  it("drops an old off without writing anything: off is the kernel's default", async () => {
+    localStorage.setItem("rx-turn-receipt", "off");
+    const port = new MockPort();
+    const save = vi.spyOn(port, "saveReceiptSettings");
+    await loadReceiptPref(port, true);
+    expect(save).not.toHaveBeenCalled();
+    expect(showsReceipt(port)).toBe(false);
+    expect(localStorage.getItem("rx-turn-receipt")).toBeNull();
+  });
+
+  it("does not undo a kernel choice that is already on with an old off", async () => {
+    localStorage.setItem("rx-turn-receipt", "off");
+    const port = new MockPort();
+    await port.saveReceiptSettings(true);
+    await loadReceiptPref(port, true);
+    expect(showsReceipt(port)).toBe(true);
+  });
+
+  it("takes the old local choice only for this machine's own kernel", async () => {
+    localStorage.setItem("rx-turn-receipt", "on");
+    const remote = new MockPort();
+    await loadReceiptPref(remote, false);
+    expect((await remote.receiptSettings()).show).toBe(false);
+    expect(localStorage.getItem("rx-turn-receipt")).toBe("on");
+    const local = new MockPort();
+    await loadReceiptPref(local, true);
+    expect((await local.receiptSettings()).show).toBe(true);
+    expect(localStorage.getItem("rx-turn-receipt")).toBeNull();
+  });
+
+  it("keeps one answer per kernel instead of the last reader's", async () => {
+    const a = new MockPort();
+    const b = new MockPort();
+    await a.saveReceiptSettings(true);
+    await loadReceiptPref(a, false);
+    await loadReceiptPref(b, false);
+    expect(showsReceipt(a)).toBe(true);
+    expect(showsReceipt(b)).toBe(false);
+  });
+
+  it("draws nothing for a receipt until its kernel has answered", async () => {
+    const port = new MockPort();
+    const pref = receiptPrefOf(port);
+    expect(pref.state()).toBe("unknown");
+    render(<ReceiptPrefContext.Provider value={pref}>{transcript(items)}</ReceiptPrefContext.Provider>);
+    expect(document.querySelector('[data-item="r1"]')?.textContent ?? "").toBe("");
+    await port.saveReceiptSettings(true);
+    await act(async () => { await loadReceiptPref(port, false); });
+    expect(card()).not.toBeNull();
+  });
+
+  it("stays hidden when the kernel cannot be read", async () => {
+    const port = new MockPort();
+    vi.spyOn(port, "receiptSettings").mockRejectedValue(new Error("down"));
+    await loadReceiptPref(port, true);
+    expect(showsReceipt(port)).toBe(false);
   });
 });

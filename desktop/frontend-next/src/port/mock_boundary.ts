@@ -1,5 +1,5 @@
 import type { Adjudications, BrowserToolsSettings, ConfigProblem, ConfigRepair, PermissionLists, PermissionRules, SandboxSettings } from "./port";
-import type { DisplayCurrencyMode, DisplayCurrencySettings, ProgressWatchSettings } from "./boundary";
+import type { DisplayCurrencyMode, DisplayCurrencySettings, ProgressWatchSettings, ReceiptSettings } from "./boundary";
 import { MockShell } from "./mock_shell";
 
 // The boundary half of the fixture: what the agent is refused outright, and how
@@ -119,6 +119,17 @@ export class MockBoundary extends MockShell {
     pause: false, rounds: 20, tokenMultiple: 8, defaultRounds: 20, defaultTokenMultiple: 8,
     path: "/Users/you/.reasonix/config.toml",
   };
+
+  private receipt: ReceiptSettings = { show: false, path: "/Users/you/.reasonix/config.toml" };
+
+  async receiptSettings(): Promise<ReceiptSettings> {
+    return { ...this.receipt };
+  }
+
+  async saveReceiptSettings(show: boolean): Promise<ReceiptSettings> {
+    this.receipt = { ...this.receipt, show };
+    return { ...this.receipt };
+  }
 
   async progressWatch(): Promise<ProgressWatchSettings> {
     return { ...this.watch };

@@ -62,6 +62,8 @@ var ChineseTraditional = Messages{
 	NoticeCompactFailedFmt:   "壓縮失敗：%s",
 	NoticeCompactHeldFmt:     "自動壓縮暫緩，上次嘗試沒有完成：%s",
 	ReceiptGapKinds: map[string]string{
+		"hint:gaps":                 "有未驗證的變更",
+		"hint:declared":             "這一輪自己說明了風險或未驗證項",
 		"unbacked_claim":            "聲稱過但帳本不支持",
 		"unproven_criterion":        "驗收項沒有證據",
 		"missing_check":             "預期的檢查從未通過",

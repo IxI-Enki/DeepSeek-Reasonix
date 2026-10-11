@@ -69,7 +69,7 @@ func renderItem(it *Item, width, shown int, hideRail bool) string {
 	case ItemCompaction:
 		return renderCompaction(it, width)
 	case ItemReceipt:
-		return renderReceipt(it.Receipt, width)
+		return renderReceipt(it.Receipt, width, it.ReceiptLine)
 	case ItemUsage:
 		return renderUsage(it.Usage, width)
 	}

@@ -127,6 +127,7 @@ func runTUI(args []string, version string) int {
 		PickAmong:     ambiguousSessionPaths(ambiguous),
 		Inline:        *f.inline,
 		HideTurnUsage: cfg != nil && !cfg.UI.ShowTurnUsage,
+		ShowReceipt:   cfg != nil && cfg.UI.ShowReceipt,
 		AutoSubmit:    cfg != nil && cfg.AutoSubmit,
 		CommandMode:   cfg != nil && cfg.UICommandMode(),
 		QuitCommands:  builtinSlashNames("/quit"),

@@ -94,6 +94,13 @@ export interface DisplayCurrencySettings {
   path: string;
 }
 
+// Whether the end-of-turn delivery receipt is drawn as a card; the user file
+// holds it, so the terminal reads the same answer.
+export interface ReceiptSettings {
+  show: boolean;
+  path: string;
+}
+
 export interface ProgressWatchSettings {
   pause: boolean;
   rounds: number;

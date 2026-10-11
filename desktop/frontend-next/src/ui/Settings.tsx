@@ -501,7 +501,7 @@ export function Settings({ hub, onError, port, networkPort, networkHost, status,
                   />
                 </div>
               </Group>
-              <ReceiptSetting />
+              <ReceiptSetting port={port} />
               <ProgressWatch port={port} />
               <Group id="session-dir" title={t("会话写入位置")}>
                 <div className="kv">

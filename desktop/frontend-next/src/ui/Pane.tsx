@@ -1,4 +1,6 @@
 import { memo, useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
+import { loadReceiptPref, receiptPrefOf } from "../state/prefs";
+import { ReceiptPrefContext } from "../state/foldpref";
 import { money } from "../i18n/format";
 import { reason } from "../i18n/kernel";
 import { t } from "../i18n";
@@ -138,6 +140,8 @@ function PaneView({ port, rt, title, active, visible, sideHost, side, onFocus, o
 
   const [wallet, refreshWallet] = useWallet(port, accountOf(status?.modelRef));
   const hideAmounts = useHidesAmounts();
+
+  useEffect(() => { void loadReceiptPref(port, !rt.host); }, [port, rt.host]);
 
   const revalue = useCallback(() => {
     port.status().then((st) => { applyStatus(st); dispatch(totalsOf(st) as never); }).catch(() => {});
@@ -330,7 +334,8 @@ function PaneView({ port, rt, title, active, visible, sideHost, side, onFocus, o
     onRevise: () => setAskFocus((n) => n + 1),
   });
 
-  const find = useFind(s.items, findPulse, active, useCallback(() => showView("flow"), [showView]));
+  const receiptPref = receiptPrefOf(port);
+  const find = useFind(s.items, findPulse, active, useCallback(() => showView("flow"), [showView]), receiptPref);
 
   const onRunDetail = useCallback(() => showView("analysis"), [showView]);
   const { quote, reply, onResend } = useReplyActions({ port, items: s.items, checkpoints, running, model: status?.label, submit, reloadSession, onSettings, onRunDetail, onError: fail });
@@ -389,6 +394,7 @@ function PaneView({ port, rt, title, active, visible, sideHost, side, onFocus, o
       <div className="pbody" data-dock={tab === "flow" ? "" : undefined} data-full={tab === "browser" ? "" : undefined}>
       <div className="pviews">
 
+      <ReceiptPrefContext.Provider value={receiptPref}>
       <PaneShown.Provider value={shown}>
       <LiveWork.Provider value={live}>
       <Transcript port={port}
@@ -426,6 +432,7 @@ function PaneView({ port, rt, title, active, visible, sideHost, side, onFocus, o
       />
       </LiveWork.Provider>
       </PaneShown.Provider>
+      </ReceiptPrefContext.Provider>
 
       <div className="scroll" data-pane="analysis" hidden={tab !== "analysis"}>
         {tab === "analysis" && (

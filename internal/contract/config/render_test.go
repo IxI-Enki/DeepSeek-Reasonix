@@ -1609,3 +1609,22 @@ func TestBrowserSettingsSurviveASave(t *testing.T) {
 		t.Fatalf("default browser config = %+v", d.Browser)
 	}
 }
+
+func TestShowReceiptDefaultsOffAndRendersAnOnOverride(t *testing.T) {
+	c := Default()
+	if c.UI.ShowReceipt {
+		t.Fatal("ui.show_receipt must default to hidden")
+	}
+	c.UI.ShowReceipt = true
+	delta := RenderTOMLProjectDelta(c)
+	if !strings.Contains(delta, "show_receipt = true") {
+		t.Fatalf("project delta missing show_receipt:\n%s", delta)
+	}
+	got := Default()
+	if _, err := toml.Decode(delta, got); err != nil {
+		t.Fatalf("decode: %v\n%s", err, delta)
+	}
+	if !got.UI.ShowReceipt {
+		t.Fatal("ui.show_receipt did not round-trip")
+	}
+}

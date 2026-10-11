@@ -16,7 +16,7 @@ import { ElicitCard } from "./cards/ElicitCard";
 import { SayCard, type ReplyActions } from "./cards/SayCard";
 import { CompactionCard } from "./cards/CompactionCard";
 import { ReceiptCard, ReceiptHint } from "./cards/ReceiptCard";
-import { useShowsReceipt } from "../state/foldpref";
+import { useReceiptState } from "../state/foldpref";
 import { ReadsCard } from "./cards/ReadsCard";
 import { UserCard } from "./cards/UserCard";
 import { NoticeCard } from "./cards/NoticeCard";
@@ -765,8 +765,10 @@ function Hero({ needsProject, onOpen, onKeep }: HeroProps) {
 }
 
 function ReceiptSlot({ r }: { r: Extract<Item, { t: "receipt" }>["r"] }) {
-  const shown = useShowsReceipt();
+  const state = useReceiptState();
+  const shown = state === "on";
   const [open, setOpen] = useState(false);
+  if (state === "unknown") return null;
   if (shown || open) return <><ReceiptCard r={r} />{!shown && <ReceiptHint r={r} open onToggle={() => setOpen(false)} />}</>;
   return <ReceiptHint r={r} open={false} onToggle={() => setOpen(true)} />;
 }

@@ -176,7 +176,7 @@ func (m *model) onResumed(msg resumedMsg) tea.Cmd {
 // resetScreen drops the transcript this screen drew, for a conversation that
 // is about to be drawn again from its record.
 func (m *model) resetScreen() {
-	m.tr = Transcript{next: m.tr.next}
+	m.tr = Transcript{next: m.tr.next, ReceiptLine: m.tr.ReceiptLine}
 	m.committed, m.sayShown = map[int]bool{}, map[int]int{}
 	m.todos, m.ask, m.menu = nil, nil, nil
 	if m.scr != nil {
