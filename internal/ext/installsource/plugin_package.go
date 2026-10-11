@@ -108,7 +108,7 @@ func (t *Tool) planGitHubPluginPackage(ctx context.Context, req request) ([]acti
 
 func (t *Tool) planClaudeMarketplace(ctx context.Context, req request, src githubRepoSource, root, commit string) ([]action, []string, error) {
 	manifestPath := filepath.Join(root, filepath.FromSlash(claudeMarketplaceManifest))
-	body, err := os.ReadFile(manifestPath)
+	body, err := readBounded(manifestPath)
 	if err != nil {
 		return nil, nil, err
 	}

@@ -1,6 +1,7 @@
 package sandbox
 
 import (
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -22,29 +23,101 @@ type ShellDiscovery struct {
 	// Probe replaces the bash launch probe. The in-process memo is private to this call; proofs still persist to ProofDir.
 	Probe  func(string) bool
 	Budget time.Duration
-	Hedge  time.Duration
+	// LookPath replaces the PATH lookup, so a caller can drive a lookup that never returns.
+	LookPath func(string) (string, error)
+	Hedge    time.Duration
 }
 
 // Resolve is ResolveShell with the discovery settings above.
 func (d ShellDiscovery) Resolve() Shell {
-	h := currentHost()
 	memo := &provenBash
 	if d.Probe != nil {
 		memo = new(sync.Map)
 	}
 	store := newShellProofStore(d.ProofDir)
-	h.probe = func(path string) bool {
-		run := d.Probe
-		if run == nil {
-			if runtime.GOOS != "windows" {
-				return true
-			}
-			run = runBashProbe
+	search := &bashSearch{budget: d.Budget, hedge: d.Hedge}
+	build := func() shellHost {
+		h := currentHost()
+		if d.LookPath != nil {
+			h.lookPath = d.LookPath
 		}
-		return proveBash(path, run, store, memo)
+		h.probe = func(path string) bool {
+			run := d.Probe
+			if run == nil {
+				if runtime.GOOS != "windows" {
+					return true
+				}
+				run = runBashProbe
+			}
+			return proveBash(path, run, store, memo)
+		}
+		h.search = search
+		return h
 	}
-	h.search = &bashSearch{budget: d.Budget, hedge: d.Hedge}
-	return resolveOn(h, d.Prefer, d.Path, d.Warn)
+	return resolveWithin(search, build, memo, d.Prefer, d.Path, d.Warn)
+}
+
+// resolveWithin bounds the whole resolution, host construction included: a PATH
+// entry on a dead share or a registry read can stall a lookup that no probe
+// budget covers. Past the bash and PowerShell budgets together the session gets
+// a bash already proven in this process, else the bare name as when nothing is
+// found; the abandoned lookup finishes into the proof store.
+func resolveWithin(search *bashSearch, build func() shellHost, memo *sync.Map, prefer, path string, warn io.Writer) Shell {
+	budget, hedge := search.timing()
+	limit := 2*budget + hedge
+	var mu sync.Mutex
+	var log strings.Builder
+	got := make(chan Shell, 1)
+	go func() {
+		got <- resolveOn(build(), prefer, path, lockedWriter{&mu, &log})
+	}()
+	var sh Shell
+	select {
+	case sh = <-got:
+	case <-time.After(limit):
+		w := lockedWriter{&mu, &log}
+		if proven, ok := provenBashPath(memo); ok {
+			sh = Shell{Kind: ShellBash, Path: proven}
+			fmt.Fprintf(w, "warning: [tools.shell] interpreter discovery did not finish within %s; using %q, which was proven earlier in this run\n", limit, proven)
+		} else {
+			sh = Shell{Kind: ShellBash, Path: "bash"}
+			fmt.Fprintf(w, "warning: [tools.shell] interpreter discovery did not finish within %s; falling back to %q, which may fail to start. Restarting Reasonix usually recovers\n", limit, "bash")
+		}
+	}
+	if warn != nil {
+		mu.Lock()
+		_, _ = io.WriteString(warn, log.String())
+		mu.Unlock()
+	}
+	return sh
+}
+
+// provenBashPath is the proven bash that sorts first, so the same memo always
+// names the same one. Only an entry whose value is struct{}{} is a proof; any
+// other record in the table (a remembered hang, say) is not.
+func provenBashPath(memo *sync.Map) (string, bool) {
+	best := ""
+	memo.Range(func(k, v any) bool {
+		if _, proven := v.(struct{}); !proven {
+			return true
+		}
+		if id, ok := k.(bashProbeIdentity); ok && (best == "" || id.path < best) {
+			best = id.path
+		}
+		return true
+	})
+	return best, best != ""
+}
+
+type lockedWriter struct {
+	mu *sync.Mutex
+	w  *strings.Builder
+}
+
+func (l lockedWriter) Write(p []byte) (int, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.w.Write(p)
 }
 
 type bashSearch struct{ budget, hedge time.Duration }
@@ -88,12 +161,21 @@ func (h shellHost) bashCandidates() []string {
 	return out
 }
 
-// bash proves the first usable candidate. A candidate that has not answered
-// within the hedge delay lets the next one start alongside it, so one hung
-// launch does not serialise the rest, and the whole search stops waiting after
-// the budget. Preference order decides the winner, never arrival order.
+// bash proves the first usable bash candidate.
 func (h shellHost) bash() (Shell, bool) {
-	cands := h.bashCandidates()
+	path, ok := h.firstProven(h.bashCandidates(), h.probe, func(p string) { bashProbeFailures.Store(p, FallbackProbeTimeout) })
+	if !ok {
+		return Shell{}, false
+	}
+	return Shell{Kind: ShellBash, Path: path}, true
+}
+
+// firstProven proves the first usable candidate. A candidate that has not
+// answered within the hedge delay lets the next one start alongside it, so one
+// hung launch does not serialise the rest, and the whole search stops waiting
+// after the budget; every candidate still unanswered then goes to
+// unanswered. Preference order decides the winner, never arrival order.
+func (h shellHost) firstProven(cands []string, prove func(string) bool, unanswered func(string)) (string, bool) {
 	budgetFor, hedgeFor := h.search.timing()
 	answers := make([]chan bool, len(cands))
 	start := func(i int) {
@@ -102,7 +184,7 @@ func (h shellHost) bash() (Shell, bool) {
 		}
 		c := make(chan bool, 1)
 		answers[i] = c
-		go func() { c <- h.probe(cands[i]) }()
+		go func() { c <- prove(cands[i]) }()
 	}
 	budget := time.After(budgetFor)
 	next := 0
@@ -118,43 +200,40 @@ func (h shellHost) bash() (Shell, bool) {
 			select {
 			case ok := <-answers[i]:
 				if ok {
-					return Shell{Kind: ShellBash, Path: cands[i]}, true
+					return cands[i], true
 				}
 				break wait
 			case <-hedge:
 				start(next)
 				next++
 			case <-budget:
-				return bashAtBudget(cands, answers, i)
+				return settleAtBudget(cands, answers, i, unanswered)
 			}
 		}
 	}
-	return Shell{}, false
+	return "", false
 }
 
-// bashAtBudget settles a search that ran out of time: the first candidate from
-// i on that already proved itself wins, and every one still unanswered is
-// recorded as a timeout.
-func bashAtBudget(cands []string, answers []chan bool, i int) (Shell, bool) {
-	var won *Shell
+// settleAtBudget settles a search that ran out of time: the first candidate
+// from i on that already proved itself wins, and every one still unanswered is
+// reported.
+func settleAtBudget(cands []string, answers []chan bool, i int, unanswered func(string)) (string, bool) {
+	won := ""
 	for j := i; j < len(cands); j++ {
 		var ok bool
 		if answers[j] != nil {
 			select {
 			case ok = <-answers[j]:
 			default:
-				bashProbeFailures.Store(cands[j], FallbackProbeTimeout)
+				unanswered(cands[j])
 				continue
 			}
 		}
-		if ok && won == nil {
-			won = &Shell{Kind: ShellBash, Path: cands[j]}
+		if ok && won == "" {
+			won = cands[j]
 		}
 	}
-	if won != nil {
-		return *won, true
-	}
-	return Shell{}, false
+	return won, won != ""
 }
 
 // bashProbeIdentity is the file a successful probe vouched for. The same path

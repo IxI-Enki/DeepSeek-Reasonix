@@ -13,7 +13,6 @@ import (
 
 	"golang.org/x/text/unicode/norm"
 
-	fileencoding "reasonix/internal/base/fileutil/encoding"
 	"reasonix/internal/base/frontmatter"
 	"reasonix/internal/contract/config"
 	"reasonix/internal/ext/skill"
@@ -212,7 +211,7 @@ func (t *Tool) skillConflictTargets(name, scope string) ([]string, error) {
 // readSkillFile reads and validates a single skill file. The fallback name
 // is used when the frontmatter does not declare one.
 func readSkillFile(path, fallbackName string, strict bool) (skillCandidate, error) {
-	b, err := fileencoding.ReadFileUTF8(path)
+	b, err := readBoundedUTF8(path)
 	if err != nil {
 		return skillCandidate{}, err
 	}

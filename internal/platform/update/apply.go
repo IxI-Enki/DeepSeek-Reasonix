@@ -11,7 +11,7 @@ import (
 // directory, not undoing a newer one — so nothing here asks the direction.
 type VersionedInstaller struct {
 	Layout  Layout
-	Staging string // update cache dir; the Windows helper copy is placed here
+	Staging string // update cache dir
 	Current string // running version, recorded in the macOS handoff transaction
 	Line    Line   // which product line's members this archive carries
 	App     Application

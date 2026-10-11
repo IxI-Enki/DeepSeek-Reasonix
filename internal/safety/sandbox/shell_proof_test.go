@@ -337,3 +337,75 @@ func TestDigestFileOfAMissingPathFails(t *testing.T) {
 		t.Fatal("digest of a missing file reported ok")
 	}
 }
+
+func TestPowerShellDiscoveryDoesNotWaitOnEachHungAliasInSeries(t *testing.T) {
+	release := make(chan struct{})
+	defer close(release)
+	h := hostWith(nil, nil, 300*time.Millisecond)
+	h.winPS = []string{`C:\a\pwsh.exe`, `C:\b\pwsh.exe`, `C:\c\pwsh.exe`}
+	h.launches = func(string) bool { <-release; return true }
+	begin := time.Now()
+	if _, ok := h.powerShell([]string{"pwsh"}); ok {
+		t.Fatal("a hung alias must not count as a PowerShell that starts")
+	}
+	if took := time.Since(begin); took > 2*time.Second {
+		t.Fatalf("discovery took %v behind hung aliases, want one budget", took)
+	}
+}
+
+func TestPowerShellDiscoveryKeepsPreferenceOrder(t *testing.T) {
+	h := hostWith(nil, nil, time.Second)
+	h.winPS = []string{`C:\a\pwsh.exe`, `C:\b\pwsh.exe`}
+	h.launches = func(p string) bool {
+		if p == `C:\a\pwsh.exe` {
+			time.Sleep(100 * time.Millisecond)
+		}
+		return true
+	}
+	if sh, ok := h.powerShell([]string{"pwsh"}); !ok || sh.Path != `C:\a\pwsh.exe` {
+		t.Fatalf("got %v %v, want the preferred candidate", sh, ok)
+	}
+}
+
+func TestResolveGivesUpWhenBuildingTheHostNeverReturns(t *testing.T) {
+	release := make(chan struct{})
+	defer close(release)
+	search := &bashSearch{budget: 100 * time.Millisecond, hedge: 20 * time.Millisecond}
+	var warn strings.Builder
+	begin := time.Now()
+	sh := resolveWithin(search, func() shellHost { <-release; return hostWith(nil, nil, time.Second) }, new(sync.Map), "auto", "", &warn)
+	if took := time.Since(begin); took > 3*time.Second {
+		t.Fatalf("resolution took %v behind a host that never built", took)
+	}
+	if sh.Kind != ShellBash || sh.Path != "bash" || !strings.Contains(warn.String(), "did not finish") || !strings.Contains(warn.String(), "Restarting") {
+		t.Fatalf("got %+v with warning %q, want the bare bash and a warning that says restarting recovers", sh, warn.String())
+	}
+}
+
+func TestResolveGivingUpPrefersABashProvenEarlier(t *testing.T) {
+	release := make(chan struct{})
+	defer close(release)
+	memo := new(sync.Map)
+	memo.Store(bashProbeIdentity{path: "git-bash"}, struct{}{})
+	search := &bashSearch{budget: 100 * time.Millisecond, hedge: 20 * time.Millisecond}
+	var warn strings.Builder
+	sh := resolveWithin(search, func() shellHost { <-release; return hostWith(nil, nil, time.Second) }, memo, "auto", "", &warn)
+	if sh.Path != "git-bash" || !strings.Contains(warn.String(), "proven earlier") {
+		t.Fatalf("got %+v with warning %q", sh, warn.String())
+	}
+}
+
+func TestResolveGivingUpIgnoresMemoEntriesThatAreNotProofs(t *testing.T) {
+	release := make(chan struct{})
+	defer close(release)
+	type hungProbe struct{ at time.Time }
+	memo := new(sync.Map)
+	memo.Store(bashProbeIdentity{path: "a-hung-bash"}, hungProbe{at: time.Now()})
+	memo.Store(bashProbeIdentity{path: "z-proven-bash"}, struct{}{})
+	search := &bashSearch{budget: 100 * time.Millisecond, hedge: 20 * time.Millisecond}
+	var warn strings.Builder
+	sh := resolveWithin(search, func() shellHost { <-release; return hostWith(nil, nil, time.Second) }, memo, "auto", "", &warn)
+	if sh.Path != "z-proven-bash" {
+		t.Fatalf("got %+v, want the proven bash and not the one recorded as hung", sh)
+	}
+}

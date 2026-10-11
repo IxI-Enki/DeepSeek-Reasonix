@@ -10,7 +10,6 @@ import (
 	"slices"
 	"strings"
 
-	fileencoding "reasonix/internal/base/fileutil/encoding"
 	"reasonix/internal/base/secrets"
 	"reasonix/internal/contract/config"
 )
@@ -176,7 +175,7 @@ func (t *Tool) packageMCPAction(req request) action {
 // convenience wrapper used by planLocal; the parser itself is exported as
 // parseMCPJSON for tests.
 func readMCPJSON(path string) ([]config.PluginEntry, []string, error) {
-	b, err := fileencoding.ReadFileUTF8(path)
+	b, err := readBoundedUTF8(path)
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil, nil, newErr(ErrManifestMissing, "no .mcp.json at %s", path)
 	}

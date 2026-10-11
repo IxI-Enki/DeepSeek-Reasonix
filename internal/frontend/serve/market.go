@@ -226,6 +226,6 @@ func refuseMarket(w http.ResponseWriter, err error) {
 	case errors.Is(err, installsource.ErrApprovalDenied):
 		refuse(w, http.StatusConflict, "market.plan_changed", "what the source resolves to changed since the plan was shown", detail)
 	default:
-		saveFailed(w, http.StatusUnprocessableEntity, "install.failed", err)
+		installFailure(w, err)
 	}
 }

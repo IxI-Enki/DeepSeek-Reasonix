@@ -354,7 +354,7 @@ func (s *Server) answerInstallSource(ctx context.Context, w http.ResponseWriter,
 	})
 	out, err := tool.Execute(ctx, raw)
 	if err != nil {
-		saveFailed(w, http.StatusUnprocessableEntity, "install.failed", err)
+		installFailure(w, err)
 		return
 	}
 	var fields map[string]json.RawMessage

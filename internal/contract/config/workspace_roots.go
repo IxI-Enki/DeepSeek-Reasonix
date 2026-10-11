@@ -150,7 +150,7 @@ func (r Roots) FolderGrantRefusal(dir string) (WorkspaceRootRefusal, bool) {
 	if key == "." || filepath.Dir(key) == key {
 		return RootTooBroad, true
 	}
-	if home, err := os.UserHomeDir(); err == nil && home != "" && keyWithin(rootKey(home), key) {
+	if home, err := osUserHomeDir(); err == nil && home != "" && keyWithin(rootKey(home), key) {
 		return RootTooBroad, true
 	}
 	var guarded []string

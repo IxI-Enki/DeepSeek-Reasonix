@@ -92,7 +92,7 @@ type shellHost struct {
 	winPS    []string
 	probe    func(string) bool
 	isWSL    func(string) bool
-	launches func(string) bool // whether a found PowerShell starts; asked only of the one about to win
+	launches func(string) bool // whether a found PowerShell starts; asked of every candidate at once
 	search   *bashSearch       // nil means the defaults
 }
 
@@ -100,22 +100,29 @@ func currentHost() shellHost {
 	return shellHost{runtime.GOOS, exec.LookPath, fileExists, windowsBashCandidates(), windowsPowerShellCandidates(), probeBash, isWindowsWSLBash, powerShellLaunches, nil}
 }
 
+// powerShell proves the first PowerShell that starts, sharing bash's budget so
+// aliases that never answer cost one budget in total, not a launch timeout each.
 func (h shellHost) powerShell(order []string) (Shell, bool) {
+	var cands []string
 	for _, name := range order {
 		for _, p := range h.winPS {
 			base := strings.ToLower(pathBase(p))
 			if base != strings.ToLower(name) && strings.TrimSuffix(base, ".exe") != strings.ToLower(name) {
 				continue
 			}
-			if h.exists(p) && h.launches(p) {
-				return Shell{Kind: ShellPowerShell, Path: p}, true
+			if h.exists(p) {
+				cands = append(cands, p)
 			}
 		}
-		if p, ok := h.lookShell(name); ok && h.launches(p) {
-			return Shell{Kind: ShellPowerShell, Path: p}, true
+		if p, ok := h.lookShell(name); ok {
+			cands = append(cands, p)
 		}
 	}
-	return Shell{}, false
+	path, ok := h.firstProven(cands, h.launches, func(string) {})
+	if !ok {
+		return Shell{}, false
+	}
+	return Shell{Kind: ShellPowerShell, Path: path}, true
 }
 
 func (h shellHost) auto(warn io.Writer) Shell {
@@ -367,6 +374,10 @@ func probeBash(path string) bool {
 // bash for good.
 const bashProbeTimeout = 10 * time.Second
 
+// probeWaitDelay bounds the wait for a killed probe to actually exit: a process
+// held in the kernel by security software outlives its context otherwise.
+const probeWaitDelay = 2 * time.Second
+
 // bashProbeFailures remembers, per path, why the last probe of it failed.
 var bashProbeFailures sync.Map
 
@@ -379,6 +390,7 @@ func runBashProbe(path string) bool {
 	ctx, cancel := context.WithTimeout(context.Background(), bashProbeTimeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, path, "-c", "true")
+	cmd.WaitDelay = probeWaitDelay
 	cmd.Env = secrets.ProcessEnv()
 	proc.HideWindow(cmd)
 	if cmd.Run() == nil {
