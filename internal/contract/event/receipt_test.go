@@ -26,3 +26,28 @@ func TestReceiptSaysSomething(t *testing.T) {
 		}
 	}
 }
+
+func TestReceiptSeverity(t *testing.T) {
+	gap := func(kind string) *CompletionReceipt {
+		return &CompletionReceipt{Verdict: "partial", Gaps: []ReceiptGap{{Kind: kind}}}
+	}
+	for _, tc := range []struct {
+		name string
+		r    *CompletionReceipt
+		want string
+	}{
+		{"nil", nil, ReceiptSeverityNone},
+		{"clean", &CompletionReceipt{Verdict: "done"}, ReceiptSeverityNone},
+		{"a change nothing proves", gap("unverified_change"), ReceiptSeverityWarn},
+		{"a failed check", gap("failed_verification"), ReceiptSeverityWarn},
+		{"a verification that predates the change", gap("stale_verification"), ReceiptSeverityNotice},
+		{"a gap kind this host does not know", gap("something_new"), ReceiptSeverityWarn},
+		{"a declared caveat alone", &CompletionReceipt{Verdict: "incomplete", Unverified: []string{"UI not run"}}, ReceiptSeverityNotice},
+		{"the worse of two gaps wins", &CompletionReceipt{Verdict: "partial", Gaps: []ReceiptGap{{Kind: "unreviewed_change"}, {Kind: "missing_check"}}}, ReceiptSeverityWarn},
+		{"a caveat does not soften a gap", &CompletionReceipt{Verdict: "partial", Risks: []string{"x"}, Gaps: []ReceiptGap{{Kind: "unverified_change"}}}, ReceiptSeverityWarn},
+	} {
+		if got := tc.r.Severity(); got != tc.want {
+			t.Errorf("%s: Severity() = %q, want %q", tc.name, got, tc.want)
+		}
+	}
+}

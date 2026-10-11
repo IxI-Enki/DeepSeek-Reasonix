@@ -3839,9 +3839,9 @@
   .rc { margin: 4px 0 2px }
   .rc-ok {
     display: flex; flex-direction: row; align-items: baseline; gap: 8px;
-    font: var(--w-reg) var(--fs-ui)/1.6 var(--ui); color: var(--ghost);
+    font: var(--w-reg) var(--fs-ui)/1.6 var(--ui); color: var(--ghost); background: none; border: 0; padding: 0; text-align: start; cursor: pointer;
   }
-  .rc-ok .rc-tick { flex: none; color: var(--ok) }
+  .rc-ok .rc-tick { flex: none; color: var(--rc-c, var(--ok)) }
   .rc-ok .rc-t { flex: none }
   .rc-ok .rc-src { min-width: 0; font: var(--w-reg) var(--fs-meta) var(--mono); color: var(--faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
   .rc-hd { padding: 8px 0 2px; font: var(--w-reg) var(--fs-meta) var(--ui); color: var(--ghost) }

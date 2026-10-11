@@ -539,6 +539,8 @@ export interface Receipt {
   // The kernel's own answer to "is this worth showing at all", carried rather
   // than recomputed here so the windows and the terminal never drift apart.
   saysSomething?: boolean;
+  // The kernel's grading of what was left unproven; absent when nothing was.
+  severity?: "notice" | "warn";
 }
 
 export interface ReceiptChange {

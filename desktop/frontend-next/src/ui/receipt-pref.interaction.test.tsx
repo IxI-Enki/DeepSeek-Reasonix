@@ -23,10 +23,11 @@ afterEach(cleanup);
 const noop = async () => undefined as never;
 const user = (id: string, text: string): Item => ({ t: "user", id, text });
 const say = (id: string, text: string): Item => ({ t: "say", id, text, done: true });
-const receipt = (id: string): Item => ({
+const receipt = (id: string, extra: Record<string, unknown> = {}): Item => ({
   t: "receipt", id,
-  r: { saysSomething: true, verdict: "partial", gaps: [{ kind: "unverified_change", detail: "ruff check ." }] },
+  r: { saysSomething: true, verdict: "partial", severity: "warn", changes: [{ path: "a.py", reviewed: false }], gaps: [{ kind: "unverified_change", detail: "ruff check ." }], ...extra },
 } as unknown as Item);
+const hint = () => document.querySelector('[data-item="r1"] .rc');
 
 function transcript(items: Item[]) {
   return (
@@ -44,12 +45,48 @@ const items = [user("u1", "survey"), say("s1", "surveyed"), receipt("r1")];
 const card = () => document.querySelector('[data-item="r1"] .call');
 
 describe("the delivery receipt card is a display choice", () => {
-  it("is hidden until this machine turns it on, and leaves nothing drawn in its place", () => {
+  it("is hidden until this machine turns it on, and the kernel's grade stands in as one line", () => {
     expect(showsReceipt()).toBe(false);
     render(transcript(items));
     expect(card()).toBeNull();
-    expect(document.querySelector('[data-item="r1"]')?.textContent ?? "").toBe("");
+    expect(hint()?.getAttribute("data-severity")).toBe("warn");
+    expect(hint()?.textContent).toBe("!" + t("有未验证的改动"));
+    expect(screen.getByRole("button", { name: t("警告") + "：" + t("有未验证的改动") })).toBeTruthy();
     expect(screen.getByText("surveyed")).toBeTruthy();
+  });
+
+  it("says nothing when the kernel graded nothing", () => {
+    render(transcript([user("u1", "survey"), say("s1", "surveyed"), receipt("r1", { severity: undefined, gaps: [] })]));
+    expect(card()).toBeNull();
+    expect(document.querySelector('[data-item="r1"]')?.textContent ?? "").toBe("");
+  });
+
+  it("does not call declared caveats unverified changes, even when files changed and passed", () => {
+    render(transcript([user("u1", "survey"), say("s1", "surveyed"), receipt("r1", { severity: "notice", gaps: [], risks: ["one-way migration"] })]));
+    expect(hint()?.getAttribute("data-severity")).toBe("notice");
+    expect(hint()?.textContent).toContain(t("这一轮自己说明了风险或未验证项"));
+    expect(hint()?.textContent).not.toContain(t("有未验证的改动"));
+  });
+
+  it("opens the card on click and closes it again, saying what the click does", async () => {
+    render(transcript(items));
+    const line = screen.getByRole("button", { name: /未验证|unverified/i });
+    expect(line.getAttribute("title")).toBe(t("点击查看交付验收：改了什么、哪些没有验证"));
+    expect(line.getAttribute("aria-expanded")).toBe("false");
+    await userEvent.click(line);
+    expect(card()).not.toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: /未验证|unverified/i }));
+    expect(card()).toBeNull();
+  });
+
+  it("is the card or the line, never both", () => {
+    render(transcript(items));
+    act(() => setShowsReceipt(true));
+    expect(card()).not.toBeNull();
+    expect(hint()).toBeNull();
+    act(() => setShowsReceipt(false));
+    expect(card()).toBeNull();
+    expect(hint()).not.toBeNull();
   });
 
   it("appears and disappears as the preference flips, on a transcript already drawn", () => {

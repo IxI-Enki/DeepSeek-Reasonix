@@ -17,6 +17,10 @@ type CompletionReceipt struct {
 	// SaysSomething is the kernel's answer to "is this worth showing at all",
 	// carried rather than recomputed so no frontend drifts from the others.
 	SaysSomething bool `json:"saysSomething"`
+	// Severity is the kernel's grading of what the receipt left unproven
+	// ("notice" or "warn"; absent when nothing was), so a frontend that does
+	// not draw the card can still say how much it would have said.
+	Severity string `json:"severity,omitempty"`
 }
 
 type ReceiptChange struct {
@@ -49,6 +53,7 @@ func completionReceiptWire(r *event.CompletionReceipt) *CompletionReceipt {
 		Risks:         append([]string(nil), r.Risks...),
 		Unverified:    append([]string(nil), r.Unverified...),
 		SaysSomething: r.SaysSomething(),
+		Severity:      r.Severity(),
 	}
 	for _, c := range r.Changes {
 		out.Changes = append(out.Changes, ReceiptChange{Path: c.Path, Reviewed: c.Reviewed})

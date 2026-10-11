@@ -50,3 +50,39 @@ func (r *CompletionReceipt) SaysSomething() bool {
 	}
 	return len(r.Gaps) > 0 || len(r.Risks) > 0 || len(r.Unverified) > 0 || r.Verdict == "done"
 }
+
+// Receipt severities, lightest first. None is the empty string so a receipt
+// that says nothing needs no field on the wire.
+const (
+	ReceiptSeverityNone   = ""
+	ReceiptSeverityNotice = "notice"
+	ReceiptSeverityWarn   = "warn"
+)
+
+// Severity is how hard this receipt asks to be read, decided here like
+// SaysSomething so frontends never grade gaps apart. A gap kind the host does
+// not know is warn: an unfamiliar finding must not drop to a whisper.
+func (r *CompletionReceipt) Severity() string {
+	if r == nil {
+		return ReceiptSeverityNone
+	}
+	out := ReceiptSeverityNone
+	if len(r.Risks) > 0 || len(r.Unverified) > 0 {
+		out = ReceiptSeverityNotice
+	}
+	for _, g := range r.Gaps {
+		if gapSeverity(g.Kind) == ReceiptSeverityWarn {
+			return ReceiptSeverityWarn
+		}
+		out = ReceiptSeverityNotice
+	}
+	return out
+}
+
+func gapSeverity(kind string) string {
+	switch kind {
+	case "stale_verification", "inconclusive_verification", "unreviewed_change", "declared_unverified":
+		return ReceiptSeverityNotice
+	}
+	return ReceiptSeverityWarn
+}
