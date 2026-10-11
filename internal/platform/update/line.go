@@ -27,6 +27,10 @@ type WindowsLine struct {
 	// Installer is how this line's installer must be started. "" is a line that
 	// has not said, and is refused rather than guessed.
 	Installer WindowsInstaller
+	// InstallerArgs go to the installer when it replaces the running install.
+	// Studio's NSIS reads "--updated" as an in-place update: it keeps the
+	// shortcuts and taskbar pin that its uninstaller would otherwise delete.
+	InstallerArgs string
 }
 
 // WindowsInstaller names the shape of a line's Windows installer, because the

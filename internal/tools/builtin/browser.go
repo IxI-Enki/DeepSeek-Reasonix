@@ -101,7 +101,11 @@ func (b browserOpen) PermissionArgs(_ context.Context, args json.RawMessage) jso
 	return hostSubjectArgs(b.Schema(), args, "origin", b.session.Origin(p.Tab))
 }
 
-func (browserOpen) ReadOnly() bool                                   { return false }
+func (browserOpen) ReadOnly() bool { return false }
+
+// Loading a page can execute scripts and send requests before the agent acts;
+// planning uses web_fetch for static research instead.
+func (browserOpen) PlanModeSafe() bool                               { return false }
 func (browserOpen) Sequential(context.Context, json.RawMessage) bool { return true }
 
 func (b browserOpen) Execute(ctx context.Context, args json.RawMessage) (string, error) {

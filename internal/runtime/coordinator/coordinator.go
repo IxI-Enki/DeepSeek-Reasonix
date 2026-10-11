@@ -568,7 +568,7 @@ func (c *Coordinator) planFromStream(ctx context.Context, input string) (string,
 func (c *Coordinator) planWithTools(ctx context.Context, input string) (plannerOutcome, error) {
 	before := c.plannerSess.Snapshot()
 	rewriteBefore := c.plannerSess.RewriteVersion()
-	ctx, submission := agent.WithPlanSubmission(ctx)
+	ctx, submission := agent.WithPlanSubmission(agent.WithoutRunTimeSink(ctx))
 	if err := c.plannerAgent.Run(ctx, input); err != nil {
 		// Mirror plan()'s rollback: Run already appended the user message
 		// (and possibly partial assistant/tool rounds) to the planner

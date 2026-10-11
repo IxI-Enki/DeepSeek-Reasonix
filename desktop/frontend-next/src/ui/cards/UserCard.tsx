@@ -11,8 +11,6 @@ import { touchKeyboard } from "../touchKeyboard";
 import { useFitHeight } from "../fitHeight";
 import { useViewer } from "../../state/viewer";
 
-const SAVED_IMAGE = /(?:^|\s)@(\.reasonix\/attachments\/clipboard-[\d.-]+\.(?:png|jpe?g|gif|webp|bmp|svg))(?=\s|$)/gi;
-
 function SavedImage({ path, src }: { path: string; src: string }) {
   const [failed, setFailed] = useState(false);
   return <div className="user-image">
@@ -47,7 +45,7 @@ export function UserCard({
   const source = messageSource(item.via, useViewer());
   const reopen = editable && draft === null;
   const rewind = !!(cp && onPrepareRewind && onCommitRewind && onUndoRewind);
-  const images = useMemo(() => [...new Set(Array.from(item.text.matchAll(SAVED_IMAGE), (match) => match[1]))], [item.text]);
+  const images = useMemo(() => [...new Set((item.attachments ?? []).map((a) => a.path))], [item.attachments]);
 
   useEffect(() => {
     const el = box.current;

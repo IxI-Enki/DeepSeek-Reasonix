@@ -74,7 +74,7 @@ export function apply(look: Appearance | null, busy = false) {
   // only one with two honest answers: a line short enough to read without
   // losing your place, or a window used to the edge. Cards, commands and
   // output answer to neither — they always have the width.
-  if (look?.width === "full") root.dataset.measure = "full";
+  if (look?.width === "full" || look?.width === "full-all") root.dataset.measure = look.width;
   else delete root.dataset.measure;
 
   if (look?.fontUi) style.setProperty("--ui", `${look.fontUi}, ${FALLBACK_UI}`);
@@ -130,11 +130,16 @@ export function installed(families: string[]): string[] {
 // Offered because they are common, not because they are the only ones that
 // work: the field next to the list takes any family the machine has.
 export const UI_FAMILIES = [
-  "PingFang SC", "Microsoft YaHei UI", "Noto Sans SC", "Source Han Sans SC", "HarmonyOS Sans SC",
-  "LXGW WenKai", "Songti SC", "SimSun", "Inter", "Segoe UI", "Roboto", "Helvetica Neue", "Arial",
+  "PingFang SC", "Microsoft YaHei UI", "Microsoft YaHei", "Noto Sans SC", "Source Han Sans SC", "HarmonyOS Sans SC",
+  "MiSans", "OPPO Sans", "Alibaba PuHuiTi", "IBM Plex Sans SC", "DengXian", "SimHei", "KaiTi", "FangSong",
+  "LXGW WenKai", "Songti SC", "SimSun", "Noto Serif SC", "Source Han Serif SC",
+  "Inter", "Segoe UI", "Segoe UI Variable", "SF Pro Text", "Roboto", "Noto Sans", "Open Sans", "Lato", "Source Sans 3",
+  "IBM Plex Sans", "Ubuntu", "Cantarell", "Helvetica Neue", "Arial", "Verdana", "Tahoma",
 ];
 
 export const MONO_FAMILIES = [
-  "SF Mono", "Menlo", "Monaco", "Cascadia Code", "Consolas", "JetBrains Mono", "Fira Code",
-  "Source Code Pro", "IBM Plex Mono", "LXGW WenKai Mono", "Sarasa Mono SC", "Maple Mono",
+  "SF Mono", "Menlo", "Monaco", "Cascadia Code", "Cascadia Mono", "Consolas", "JetBrains Mono", "Fira Code", "Fira Mono",
+  "Source Code Pro", "IBM Plex Mono", "Roboto Mono", "Noto Sans Mono", "DejaVu Sans Mono", "Ubuntu Mono", "Hack", "Iosevka",
+  "Geist Mono", "Victor Mono", "Monaspace Neon", "Courier New", "Lucida Console",
+  "LXGW WenKai Mono", "Sarasa Mono SC", "Sarasa Term SC", "Maple Mono", "Maple Mono NF CN",
 ];

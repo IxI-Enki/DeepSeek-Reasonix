@@ -41,6 +41,10 @@ const (
 	modernProbeWait = 3 * time.Second
 )
 
+// errProbeUnanswered is a probe that drew no JSON-RPC reply: the server stayed
+// silent or the connection broke. What state the child is in is unknown.
+var errProbeUnanswered = errors.New("MCP server did not answer server/discover")
+
 // ErrMCPInputRequired is a modern server asking, mid-call, for input this
 // client cannot give it (an elicitation or a sampling request).
 var ErrMCPInputRequired = errors.New("MCP server needs input this client does not provide")
@@ -106,9 +110,10 @@ type discoverResult struct {
 }
 
 // probe asks which era the server speaks. It returns the modern version both
-// sides share, or "" to fall back to initialize. It fails only when the server
-// is modern and shares no revision with this client: falling back then would
-// be speaking a protocol the server said it does not.
+// sides share, or "" to fall back to initialize, or errProbeUnanswered when no
+// reply came. It fails otherwise only when the server is modern and shares no
+// revision with this client: falling back then would be speaking a protocol the
+// server said it does not.
 func (c *Client) probe(ctx context.Context, t transport) (string, *discoverResult, error) {
 	wait := modernProbeWait
 	if deadline, ok := ctx.Deadline(); ok {
@@ -131,7 +136,10 @@ func (c *Client) probe(ctx context.Context, t transport) (string, *discoverResul
 	// legacy server may use them for its own reasons. Only a list of revisions
 	// marks the answer as modern; anything else gets the handshake.
 	var rpc *rpcError
-	if !errors.As(err, &rpc) || rpc.Code != codeUnsupportedProtocolVersion {
+	if !errors.As(err, &rpc) {
+		return "", nil, errProbeUnanswered
+	}
+	if rpc.Code != codeUnsupportedProtocolVersion {
 		return "", nil, nil
 	}
 	var data struct {
@@ -167,6 +175,9 @@ func (c *Client) connect(ctx context.Context) error {
 		return c.initialize(ctx)
 	}
 	version, d, err := c.probe(ctx, c.t)
+	if errors.Is(err, errProbeUnanswered) {
+		return c.initializeOnFreshChild(ctx)
+	}
 	if err != nil {
 		return fmt.Errorf("plugin %q: %w", c.name, err)
 	}
@@ -181,6 +192,19 @@ func (c *Client) connect(ctx context.Context) error {
 		c.instructions = strings.TrimSpace(d.Instructions)
 	}
 	return nil
+}
+
+// initializeOnFreshChild is the legacy handshake after a probe that went
+// unanswered. A server SDK may abort serving on a first message other than
+// initialize while its process keeps running, so initialize goes to a new child
+// on stdio; the other transports hold no such per-connection state.
+func (c *Client) initializeOnFreshChild(ctx context.Context) error {
+	if rt, ok := c.t.(*reconnectingTransport); ok && c.transport == "stdio" {
+		if err := rt.restart(ctx); err != nil {
+			return fmt.Errorf("plugin %q: restart after unanswered %s: %w", c.name, discoverMethod, err)
+		}
+	}
+	return c.initialize(ctx)
 }
 
 // handshakeOn readies a replacement connection. A modern server has no

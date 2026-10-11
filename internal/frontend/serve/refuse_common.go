@@ -28,7 +28,6 @@ const (
 	codeSessionOutside    = "session.outside_dir"
 	codeSessionActive     = "busy.session_active"
 	codeSwitchModel       = "busy.switch_model"
-	codeSwitchModelJobs   = "busy.switch_model_jobs"
 	codeSessionOpenFailed = "session.open_failed"
 )
 

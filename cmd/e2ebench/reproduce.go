@@ -7,10 +7,11 @@ import (
 	"strings"
 )
 
-// reproductionSection says whether two reports are one capability version on
-// one corpus, and whether their rates differ by more than chance would. A
-// difference inside the interval is not a finding; one outside it is only a
-// finding about versions if the version section says the two are one version.
+// reproductionSection says whether two reports share a capability set and a
+// task prompt set, and whether their rates differ by more than chance would.
+// Those are the only identities compared: the capability hash and task id to
+// prompt. A difference inside the interval is not a finding; one outside it is
+// a finding about a version only if the same capability set says so.
 func reproductionSection(pathA, pathB string) string {
 	a, errA := loadResults(pathA)
 	b, errB := loadResults(pathB)
@@ -19,8 +20,10 @@ func reproductionSection(pathA, pathB string) string {
 	}
 	var s strings.Builder
 	s.WriteString("\n### Reproduction\n\n")
-	fmt.Fprintf(&s, "- version: %s\n", versionVerdict(a, b))
-	fmt.Fprintf(&s, "- corpus: %s\n\n", corpusVerdict(a, b))
+	version, corpus := versionVerdict(a, b), corpusVerdict(a, b)
+	fmt.Fprintf(&s, "- capability set: %s\n", version.text)
+	fmt.Fprintf(&s, "- task prompts: %s\n", corpus.text)
+	s.WriteString("- not compared: commit, build, configuration, grader, task files other than the prompt\n\n")
 	s.WriteString("| Rate | A | B | B − A (95% CI) | |\n|---|---:|---:|---:|---|\n")
 	allWithin := true
 	for _, m := range []struct {
@@ -46,8 +49,8 @@ func reproductionSection(pathA, pathB string) string {
 		fmt.Fprintf(&s, "| %s | %d/%d | %d/%d | %+.1fpp (%+.1f, %+.1f) | %s |\n", m.name, ka, na, kb, nb,
 			100*(float64(kb)/float64(nb)-float64(ka)/float64(na)), 100*lo, 100*hi, verdict)
 	}
-	if allWithin && strings.HasPrefix(versionVerdict(a, b), "one version") && strings.HasPrefix(corpusVerdict(a, b), "same") {
-		s.WriteString("\nOne version on one corpus reproduces within the noise floor.\n")
+	if allWithin && version.same && corpus.same {
+		s.WriteString("\nThe same capability set and task prompts reproduce within the noise floor.\n")
 	}
 	return s.String()
 }
@@ -56,7 +59,14 @@ func counted(results []result) []result {
 	return slices.DeleteFunc(slices.Clone(results), func(r result) bool { return r.Skipped || r.Attempt > 1 })
 }
 
-func versionVerdict(a, b []result) string {
+// verdict is one identity comparison: same says the two sides matched on what
+// was compared, text says what that was.
+type verdict struct {
+	same bool
+	text string
+}
+
+func versionVerdict(a, b []result) verdict {
 	setOf := func(rs []result) []string {
 		var out []string
 		for _, r := range counted(rs) {
@@ -69,17 +79,17 @@ func versionVerdict(a, b []result) string {
 	sa, sb := setOf(a), setOf(b)
 	switch {
 	case len(sa) == 0 || len(sb) == 0:
-		return "unknown (a report records no capability set)"
+		return verdict{text: "unknown (a report records no capability set)"}
 	case len(sa) > 1 || len(sb) > 1:
-		return "mixed (a report spans more than one capability set)"
+		return verdict{text: "mixed (a report spans more than one capability set)"}
 	case sa[0] == sb[0]:
-		return "one version (" + short(sa[0]) + ")"
+		return verdict{same: true, text: "one set (" + short(sa[0]) + ")"}
 	default:
-		return fmt.Sprintf("two versions (%s vs %s): a difference is a comparison, not a reproduction", short(sa[0]), short(sb[0]))
+		return verdict{text: fmt.Sprintf("two capability sets (%s vs %s): a difference is a comparison, not a reproduction", short(sa[0]), short(sb[0]))}
 	}
 }
 
-func corpusVerdict(a, b []result) string {
+func corpusVerdict(a, b []result) verdict {
 	prompts := func(rs []result) map[string]string {
 		out := map[string]string{}
 		for _, r := range counted(rs) {
@@ -100,9 +110,9 @@ func corpusVerdict(a, b []result) string {
 		}
 	}
 	if differ == 0 {
-		return fmt.Sprintf("same %d tasks", len(pa))
+		return verdict{same: true, text: fmt.Sprintf("same %d task ids and prompts", len(pa))}
 	}
-	return fmt.Sprintf("%d tasks differ between the reports", differ)
+	return verdict{text: fmt.Sprintf("%d task ids or prompts differ between the reports", differ)}
 }
 
 func passRate(rs []result) (int, int) {

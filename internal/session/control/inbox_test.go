@@ -540,8 +540,22 @@ func TestCancelWithInboxItemsDiscardsOnlyOwnedPendingItems(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Resuming after the cancel offers the survivor to the dispatcher; hold
+	// that submit so the assertion sees the queue, not a turn that already
+	// acknowledged the item.
+	var offered []string
+	c.inbox.mu.Lock()
+	c.inbox.beforeDispatchSubmit = func(id string) error {
+		offered = append(offered, id)
+		return errors.New("hold dispatch")
+	}
+	c.inbox.scheduleDispatchRetry = func(time.Duration, func()) {}
+	c.inbox.mu.Unlock()
 	if err := c.CancelWithInboxItems([]string{owned.ItemID, unrelated.ItemID}, "desktop"); err != nil {
 		t.Fatal(err)
+	}
+	if len(offered) != 1 || offered[0] != unrelated.ItemID {
+		t.Fatalf("dispatcher was offered %v, want only the unrelated item", offered)
 	}
 	snap := c.InboxSnapshot()
 	if snap.Paused {

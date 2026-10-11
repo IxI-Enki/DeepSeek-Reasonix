@@ -294,7 +294,9 @@ type Options struct {
 	PromptRefiner   *promptrefine.Refiner // rewrites a draft before it is sent; nil refuses the ask
 	CommitMessenger CommitDrafter         // drafts commit messages; nil refuses the ask
 	Sink            event.Sink
-	Policy          permission.Policy
+	// QuoteContext is the same live pricing projection used by the assembled sink.
+	QuoteContext *event.QuoteContext
+	Policy       permission.Policy
 	// SubagentGate is the shared gate every headless-only sub-agent surface
 	// reads; nil disables gating there. The approval-mode setters Update it so
 	// a runtime switch reaches sub-agents, not only the executor's own gate.
@@ -315,6 +317,9 @@ type Options struct {
 	AllSkills           []skill.Skill
 	SkillStore          *skill.Store
 	AllSkillStore       *skill.Store
+	// Clock is the host's wall clock for the date the model is told; nil means
+	// the model is told none.
+	Clock func() time.Time
 	// DisableImplicitSkillInvocation controls model-facing discovery only;
 	// explicit /skill commands and management remain host-side capabilities.
 	DisableImplicitSkillInvocation bool
@@ -1210,6 +1215,12 @@ type closeJobsMode int
 const (
 	closeJobsWithGrace closeJobsMode = iota
 	closeJobsAsync
+	// closeJobsHandedOff leaves the manager to a replacement controller, so
+	// the jobs run on; cleanup waits for those jobs, which still use what it
+	// would release.
+	closeJobsHandedOff
+	// closeJobsShared closes a controller that only borrowed the manager.
+	closeJobsShared
 )
 
 // SetBypass is the legacy name for SetAutoApproveTools. Keep it for existing

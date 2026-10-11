@@ -285,7 +285,7 @@ func main() {
 	timeoutSec := flag.Int("timeout", 1200, "agent timeout in seconds (diff mode)")
 	attempts := flag.Int("attempts", 1, "suite/diff modes: retry a task up to N times until an attempt passes (stochastic agent); enables Pass@≤N")
 	tapeRecord, tapeReplay := registerTapeFlags()
-	trials := flag.Int("trials", 1, "suite mode: run every task N times and keep every outcome; reports pass^N (all passed) beside mean pass@1")
+	trials := flag.Int("trials", 1, "suite mode: run every task N times and keep every outcome; reports pass^N and pass@N over tasks that ran all N trials, beside mean pass@1 over every graded trial")
 	flag.Parse()
 	*trajDir = absTrajectoryDir(*trajDir)
 	if *trials > 1 && *attempts > 1 {

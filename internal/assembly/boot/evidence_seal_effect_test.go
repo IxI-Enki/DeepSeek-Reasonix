@@ -178,7 +178,7 @@ model = "x"
 	if !slices.Contains(bundle.WithinTurn.Paths, "note.log") {
 		t.Fatalf("the writing turn's snapshot delta = %v, want note.log", bundle.WithinTurn.Paths)
 	}
-	if bundle.Kind != "shadow_bundle/1" || !found || !bundle.Blocked {
+	if bundle.Kind != "shadow_bundle/2" || !found || !bundle.Blocked {
 		t.Fatalf("bundle = %s, want a blocked turn's write_file receipt carrying only its argument digest", payload)
 	}
 }

@@ -43,6 +43,15 @@ export function tokens(n: number): string {
   return `${decimals(n / 1_000_000, 1)}M`;
 }
 
+/** elapsed is a run time said compactly: seconds under a minute, then minutes
+ *  and hours, a zero unit left out. It matches the terminal's wording. */
+export function elapsed(ms: number): string {
+  const total = Math.round(ms / 1000);
+  if (total < 60) return `${total}s`;
+  const parts = [[Math.floor(total / 3600), "h"], [Math.floor((total % 3600) / 60), "m"], [total % 60, "s"]] as const;
+  return parts.filter(([n]) => n > 0).map(([n, u]) => `${n}${u}`).join(" ");
+}
+
 /** seconds spells a millisecond duration. One place by default — the callers
  *  that used to pick their own each picked a different one. */
 export const seconds = (ms: number, digits = 1) => `${decimals(ms / 1000, digits)}s`;

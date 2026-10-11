@@ -911,6 +911,36 @@ func TestWithNotificationsWrapsCLISinkWithConfiguredSender(t *testing.T) {
 	}
 }
 
+type cliChimeSender struct {
+	cliRecordSender
+	chimes int
+}
+
+func (s *cliChimeSender) Chime() error {
+	s.chimes++
+	return nil
+}
+
+func TestWithNotificationsChimesForSoundAloneAndNeverByDefault(t *testing.T) {
+	sender := &cliChimeSender{}
+	prev := newNotificationSender
+	newNotificationSender = func() notify.Sender { return sender }
+	t.Cleanup(func() { newNotificationSender = prev })
+
+	quiet := withNotifications(&cliRecordSink{}, config.Default())
+	quiet.Emit(event.Event{Kind: event.TurnDone})
+	if sender.chimes != 0 || len(sender.messages) != 0 {
+		t.Fatalf("a default config made noise: chimes=%d messages=%d", sender.chimes, len(sender.messages))
+	}
+
+	cfg := config.Default()
+	cfg.Notifications.Sound = true
+	withNotifications(&cliRecordSink{}, cfg).Emit(event.Event{Kind: event.TurnDone})
+	if sender.chimes != 1 || len(sender.messages) != 0 {
+		t.Fatalf("sound alone: chimes=%d messages=%d, want 1 chime and no toast", sender.chimes, len(sender.messages))
+	}
+}
+
 func TestConfigTelemetryCommandRoundTripAndOptOutCleanup(t *testing.T) {
 	isolateCLIConfigHome(t)
 	out := captureStdout(t, func() {

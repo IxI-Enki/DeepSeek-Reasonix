@@ -17,7 +17,7 @@ beforeEach(async () => {
 });
 afterEach(() => { cleanup(); sessionStorage.clear(); vi.restoreAllMocks(); });
 
-it.each(["completed", "pending"])("isolates a %s remote theme import when the command palette opens a local session", async (state) => {
+it.each(["completed", "pending"])("keeps a %s machine theme import when the command palette opens a local session", async (state) => {
   const hub = new MockHub();
   const remote = await hub.openRemote({ host: "gpu-box", sessionPath: "/srv/sessions/pipeline.jsonl" });
   sessionStorage.setItem("rx-active-pane", remote.id);
@@ -29,9 +29,11 @@ it.each(["completed", "pending"])("isolates a %s remote theme import when the co
     port.themes = async () => [];
     return port;
   };
-  const port = hub.portFor(remote);
+  const remoteImport = vi.spyOn(hub.portFor(remote), "importTheme");
+  const port = hub.machinePort();
+  port.themes = async () => [];
   let finish!: (value: ThemeImport) => void;
-  const imported = { pack: { id: "remote-only", name: "Remote only", tokens: {} } };
+  const imported = { pack: { id: "local-only", name: "Local only", tokens: {} } };
   vi.spyOn(port, "importTheme").mockImplementation(() => state === "completed"
     ? Promise.resolve(imported) : new Promise((resolve) => { finish = resolve; }));
   const activate = vi.spyOn(port, "activateTheme").mockResolvedValue();
@@ -42,7 +44,7 @@ it.each(["completed", "pending"])("isolates a %s remote theme import when the co
   await userEvent.click(await screen.findByRole("tab", { name: /外观/ }));
   const sheet = document.querySelector(".prefs")!;
   fireEvent.change(sheet.querySelector('input[data-action="theme.import"]')!, {
-    target: { files: [new File(["fixture"], "remote.zip")] },
+    target: { files: [new File(["fixture"], "local.zip")] },
   });
   if (state === "completed") await screen.findByRole("button", { name: "立即使用" });
   else await screen.findByRole("button", { name: "正在导入…" });
@@ -51,8 +53,10 @@ it.each(["completed", "pending"])("isolates a %s remote theme import when the co
   await waitFor(() => expect(sessionStorage.getItem("rx-active-pane")).not.toBe(remote.id));
   expect(document.querySelector(".prefs")).toBe(sheet);
   if (state === "pending") await act(async () => finish(imported));
-  expect(screen.queryByRole("button", { name: "立即使用" })).toBeNull();
-  expect(sheet.textContent).not.toContain("Remote only");
+  expect(await screen.findByRole("button", { name: "立即使用" })).toBeTruthy();
+  expect(sheet.textContent).toContain("Local only");
   expect(screen.getByRole<HTMLButtonElement>("button", { name: "导入主题…" }).disabled).toBe(false);
-  expect(activate).not.toHaveBeenCalled();
+  expect(remoteImport).not.toHaveBeenCalled();
+  await userEvent.click(screen.getByRole("button", { name: "立即使用" }));
+  expect(activate).toHaveBeenCalledWith("local-only");
 });

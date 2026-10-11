@@ -245,6 +245,13 @@ export interface DecisionReceipt {
   via?: Via;
 }
 
+// An image the host stored under .reasonix/attachments that a message
+// references. Mirrors eventwire.Attachment: the host resolved it, so a client
+// draws a preview from this rather than from how the reference was spelled.
+export interface StoredAttachment {
+  path: string;
+}
+
 // The paired device a person acted from. Mirrors eventwire.Via: the pairing's
 // id, and the 设备 N the window listed it under at the time.
 export interface Via {
@@ -539,6 +546,8 @@ export interface Receipt {
   // The kernel's own answer to "is this worth showing at all", carried rather
   // than recomputed here so the windows and the terminal never drift apart.
   saysSomething?: boolean;
+  // The kernel's grading of what was left unproven; absent when nothing was.
+  severity?: "notice" | "warn";
 }
 
 export interface ReceiptChange {
@@ -662,6 +671,8 @@ export interface WireEvent {
   reasoning?: string;
   // message: how long the kernel measured this reply thinking, in ms.
   thoughtMs?: number;
+  // turn_done: ms the run took up to its final answer; absent when it gave none.
+  workDurationMs?: number;
   level?: string;
   // "operator" means the notice is about the machine running this conversation,
   // not about the conversation. Only the latter belongs in a transcript.
@@ -708,6 +719,8 @@ export interface WireEvent {
   // the window. The message itself rides text, for every client that did not
   // send it.
   via?: Via;
+  // turn_started / steer: the stored attachments the message references.
+  attachments?: StoredAttachment[];
   // steer: the host wrote this guidance, so it is never drawn as the person's.
   hostAuthored?: boolean;
   // recovery_paused is no longer emitted; sessions recorded before the retry

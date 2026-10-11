@@ -191,7 +191,7 @@ describe("what Escape takes back", () => {
     await userEvent.click(screen.getByRole("tab", { name: /扩展/ }));
     const add = await screen.findByRole("button", { name: "添加" });
     await userEvent.click(add);
-    await screen.findByRole("textbox", { name: /粘贴|安装/ }).catch(() => null);
+    await screen.findByRole("textbox", { name: /仓库地址/ });
 
     await userEvent.keyboard("{Escape}");
     expect(onClose).not.toHaveBeenCalled();

@@ -369,6 +369,7 @@ out of how a path is spelled, which cannot tell `internal/auth` from
 - sensitive: internal/ext/pluginpkg/**
 - sensitive: internal/base/netclient/**
 - sensitive: internal/safety/redirectguard/**
+- sensitive: internal/safety/endpointclient/**
 - sensitive: internal/safety/egress/**
 - sensitive: internal/platform/browser/**
 - sensitive: internal/platform/computer/**
@@ -402,8 +403,8 @@ observation, never by a check that ran afterwards.
 What follows bounds Observable today. It is not a restatement of the invariant:
 moving a number here must not move the promise.
 
-- `scanWorkspace` walks the workspace recursively, skips VCS store dirs, and is
-  `complete` only below 50k files. Over that, or past a walk error, it
+- `scanWorkspace` walks the workspace and every granted extra root recursively,
+  skips VCS store dirs, and is `complete` only below 50k files in total. Over that, or past a walk error, it
   establishes nothing and the mutation stays unproven.
 - Symlinks are recorded by `Lstat`, so a write through one lands outside what
   the walk compares. Confining the resolved target is the sandbox's job.

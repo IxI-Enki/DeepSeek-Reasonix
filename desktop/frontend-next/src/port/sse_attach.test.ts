@@ -31,6 +31,18 @@ describe("attach", () => {
     expect(err.reason?.code).toBe("attachment.unreadable");
   });
 
+  it("refuses a file past the kernel's limit before reading a byte of it", async () => {
+    const read = vi.fn(async () => new ArrayBuffer(0));
+    const fetched = vi.fn();
+    vi.stubGlobal("fetch", fetched);
+    const huge = { type: "application/zip", size: 600 * 1024 * 1024, arrayBuffer: read } as unknown as Blob;
+    const err = await new SsePort("", "r1").attach(huge, "modpack.mrpack").catch((e) => e);
+    expect(err).toBeInstanceOf(HttpError);
+    expect(err.reason).toMatchObject({ code: "attachment.too_large", params: { limit_mb: 25 } });
+    expect(read).not.toHaveBeenCalled();
+    expect(fetched).not.toHaveBeenCalled();
+  });
+
   it("still returns the saved reference on success", async () => {
     vi.stubGlobal("fetch", async () => ({ ok: true, status: 200, json: async () => ({ path: "p", ref: "@p", image: false }) }));
     expect(await new SsePort("", "r1").attach(new Blob(["x"]), "a.txt")).toEqual({ path: "p", ref: "@p", image: false });

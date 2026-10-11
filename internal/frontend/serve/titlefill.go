@@ -80,6 +80,7 @@ func (s *Server) drainTitles() {
 		cancel()
 		if title != "" {
 			s.titles.put(job.name, title, job.source, job.mod)
+			s.bc.treeChanged()
 		}
 
 		f.mu.Lock()

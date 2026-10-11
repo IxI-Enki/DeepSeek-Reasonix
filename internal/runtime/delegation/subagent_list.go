@@ -11,6 +11,7 @@ import (
 	"reasonix/internal/state/sessionstore"
 	"slices"
 	"strings"
+	"time"
 
 	fileencoding "reasonix/internal/base/fileutil/encoding"
 )
@@ -80,10 +81,10 @@ func (t *SubagentListTool) Execute(ctx context.Context, args json.RawMessage) (s
 	if err != nil {
 		return "", err
 	}
-	return formatSubagentListing(artifacts, want), nil
+	return formatSubagentListing(artifacts, want, time.Now(), t.store.held), nil
 }
 
-func formatSubagentListing(artifacts []sessionstore.SubagentArtifact, want sessionstore.SubagentStatus) string {
+func formatSubagentListing(artifacts []sessionstore.SubagentArtifact, want sessionstore.SubagentStatus, now time.Time, live func(ref string) bool) string {
 	kept := make([]sessionstore.SubagentArtifact, 0, len(artifacts))
 	for _, a := range artifacts {
 		if want == "" || a.Meta.Status == want {
@@ -111,6 +112,12 @@ func formatSubagentListing(artifacts []sessionstore.SubagentArtifact, want sessi
 		}
 		if a.Meta.Capsule.Inherited.HasUpstream() {
 			b.WriteString("  started-from=upstream")
+		}
+		if !a.Meta.CreatedAt.IsZero() {
+			fmt.Fprintf(&b, "  started=%s", a.Meta.CreatedAt.UTC().Format("2006-01-02T15:04:05Z"))
+			if a.Meta.Status == sessionstore.SubagentRunning && live != nil && live(a.Ref) {
+				fmt.Fprintf(&b, "  elapsed=%s", now.Sub(a.Meta.CreatedAt).Round(time.Second))
+			}
 		}
 		fmt.Fprintf(&b, "  updated=%s\n", a.Meta.UpdatedAt.UTC().Format("2006-01-02T15:04:05Z"))
 	}

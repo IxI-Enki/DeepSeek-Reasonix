@@ -43,6 +43,7 @@ type Event struct {
 	Readiness       *FinalReadiness     `json:"readiness,omitempty"`
 	Receipt         *CompletionReceipt  `json:"receipt,omitempty"`
 	CheckpointTurn  *int                `json:"checkpointTurn,omitempty"`
+	WorkDurationMs  int64               `json:"workDurationMs,omitempty"` // TurnDone: run time up to the final answer
 	// Which producer wrote this frame: the executor, the planner, a sub-agent.
 	// A turn can carry two models, and the alternative is reading it off the
 	// last phase marker — an adjacency a replay cannot even see.
@@ -52,9 +53,9 @@ type Event struct {
 	// own user row, so this is the only thing that names which one.
 	AuthoredTurn *int `json:"authoredTurn,omitempty"`
 	MsgIndex     *int `json:"msgIndex,omitempty"`
-	// turn_started / steer: the paired device the message came from; absent is
-	// the window. The message itself rides text.
-	Via *Via `json:"via,omitempty"`
+	// turn_started / steer: the sending device (absent is the window); the message rides text.
+	Via         *Via         `json:"via,omitempty"`
+	Attachments []Attachment `json:"attachments,omitempty"` // turn_started / steer
 	// steer: the host wrote this guidance, not the person.
 	HostAuthored bool `json:"hostAuthored,omitempty"`
 	// Which model wrote this. None means the turn's own, which a client
@@ -133,7 +134,7 @@ type StreamAttempt struct {
 
 // ToWire converts a typed runtime event into the shared frontend JSON contract.
 func ToWire(e event.Event) Event {
-	w := Event{Kind: kindNames[e.Kind], Text: e.Text, Detail: e.Detail, Reasoning: e.Reasoning, ThoughtMs: e.ThoughtMs, ItemID: e.ItemID, Source: e.Source}
+	w := Event{Kind: kindNames[e.Kind], Text: e.Text, Detail: e.Detail, Reasoning: e.Reasoning, ThoughtMs: e.ThoughtMs, ItemID: e.ItemID, Source: e.Source, Attachments: ToWireAttachments(e.Attachments)}
 	w.ModelRef = wireModelRef(e)
 	if len(e.MemoryCitations) > 0 {
 		w.MemoryCitations = ToWireMemoryCitations(e.MemoryCitations)
@@ -192,9 +193,8 @@ func ToWire(e event.Event) Event {
 		w.Via = ToWireVia(e.Via)
 		w.HostAuthored = e.HostAuthored
 	case event.TurnDone:
-		w.Cancelled = e.Cancelled
-		w.Outcome = e.Outcome
-		w.CheckpointTurn = e.CheckpointTurn
+		w.Cancelled, w.Outcome = e.Cancelled, e.Outcome
+		w.CheckpointTurn, w.WorkDurationMs = e.CheckpointTurn, e.WorkDurationMs
 		w.Receipt = completionReceiptWire(e.Receipt)
 		if e.Readiness != nil {
 			w.Readiness = &FinalReadiness{Attempts: e.Readiness.Attempts, Missing: append([]string(nil), e.Readiness.Missing...)}

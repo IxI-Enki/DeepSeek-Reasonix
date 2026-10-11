@@ -263,6 +263,13 @@ export function CompletionMenu({ id, items, active, kind, query, kb, onPick, onH
                   {it.descend && <i className="ah" aria-hidden="true">›</i>}
                 </span>
                 {it.hint && <span className="ds">{it.hint}</span>}
+                {it.args?.map((a) => (
+                  <span className="ds" key={a.name}>
+                    {a.name} {t(a.required ? "必填" : "可选")}
+                    {a.description ? ` · ${a.description}` : ""}
+                  </span>
+                ))}
+                {it.moreArgs ? <span className="ds">{t("还有 {n} 项", { n: it.moreArgs })}</span> : null}
               </span>
               {it.kind && <span className="rt">{t(KIND[it.kind] ?? it.kind)}</span>}
             </button>

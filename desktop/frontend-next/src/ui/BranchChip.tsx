@@ -11,6 +11,9 @@ interface Props {
   // a chip that says so — three states that must not read as one word.
   git: WorkspaceGit | null;
   changeCount: number;
+  // The count is drawn elsewhere (the changed-files pill), so the chip keeps
+  // only the branch name.
+  countElsewhere?: boolean;
   // Called when a switch lands (status refresh) and when it moved the tree
   // (the change list, the branch reading and the workspace view re-read).
   onChanged: () => void;
@@ -46,7 +49,7 @@ function fitCard(anchor: HTMLDivElement) {
 // The composer's branch chip: the workspace's branch as git itself names it,
 // and the menu that moves the session to another one. The reading lives in
 // the pane's tree refresh; this component owns only the choosing.
-export function BranchChip({ port, git, changeCount, onChanged, onSwitched, onError }: Props) {
+export function BranchChip({ port, git, changeCount, countElsewhere = false, onChanged, onSwitched, onError }: Props) {
   const branchTipId = useId();
   const [busy, setBusy] = useState(false);
   const [locals, setLocals] = useState<WorkspaceBranch[]>([]);
@@ -107,7 +110,7 @@ export function BranchChip({ port, git, changeCount, onChanged, onSwitched, onEr
         label={<>
           <span className="ic" aria-hidden="true"><StudioIcon name="branch" /></span>
           <span className="lb">{git.branch}</span>
-          {changeCount > 0 && <small>{t("{n} 个变更", { n: changeCount })}</small>}
+          {changeCount > 0 && !countElsewhere && <small>{t("{n} 个变更", { n: changeCount })}</small>}
           <StudioIcon name="down" />
         </>}
       />

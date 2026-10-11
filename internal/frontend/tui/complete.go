@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"slices"
 	"strings"
 	"unicode/utf16"
@@ -111,7 +112,10 @@ func (m *model) onCompletion(msg completionMsg) {
 	}
 	sel := 0
 	if m.menu != nil && m.menu.line == msg.line {
-		sel = max(0, slices.Index(c.Items, m.menu.c.Items[m.menu.sel]))
+		kept := m.menu.c.Items[m.menu.sel]
+		sel = max(0, slices.IndexFunc(c.Items, func(it CompletionItem) bool {
+			return it.Label == kept.Label && it.Insert == kept.Insert && it.Kind == kept.Kind
+		}))
 	}
 	m.menu = &menu{line: msg.line, c: c, sel: sel}
 }
@@ -228,10 +232,34 @@ func (m *model) menuLines() []string {
 			row += termrender.Dim("  " + oneLine(it.Hint, max(m.width-8-termrender.VisibleWidth(label), 10)))
 		}
 		lines = append(lines, row)
+		if i == m.menu.sel {
+			lines = append(lines, argumentLines(it, m.width)...)
+		}
 	}
 	hint := i18n.M.CompHintSlash
 	if m.menu.c.Kind == "ref" {
 		hint = i18n.M.CompHintFile
 	}
 	return append(lines, termrender.Dim("    "+hint))
+}
+
+// argumentLines lists a prompt's declared arguments under its row: the name,
+// whether it is required, and its description. The kernel already bounded the
+// list and says how many it left out.
+func argumentLines(it CompletionItem, width int) []string {
+	lines := make([]string, 0, len(it.Args)+1)
+	for _, a := range it.Args {
+		text := a.Name
+		if a.Required {
+			text += " *"
+		}
+		if a.Description != "" {
+			text += "  " + a.Description
+		}
+		lines = append(lines, termrender.Dim("      "+oneLine(text, max(width-8, 10))))
+	}
+	if it.MoreArgs > 0 {
+		lines = append(lines, termrender.Dim(fmt.Sprintf("      … +%d", it.MoreArgs)))
+	}
+	return lines
 }

@@ -36,9 +36,11 @@ for (const scheme of ["light", "dark"]) {
     const g = await page.evaluate(() => {
       const el = document.querySelector(".reask textarea");
       if (!el) return null;
-      return { h: el.getBoundingClientRect().height, scroll: el.scrollHeight, client: el.clientHeight, view: innerHeight };
+      const row = el.closest(".call").getBoundingClientRect();
+      return { h: el.getBoundingClientRect().height, w: el.getBoundingClientRect().width, row: row.width, scroll: el.scrollHeight, client: el.clientHeight, view: innerHeight };
     });
     check(`${scheme}/${label}: the rewrite box opened`, !!g);
+    if (g) check(`${scheme}/${label}: the rewrite box spans its row, not the width a bare textarea starts at`, g.w >= g.row * 0.9 - 2, `box ${Math.round(g.w)}px of a ${Math.round(g.row)}px row`);
     if (g) {
       const room = Math.min(g.scroll, g.view * 0.6, 448);
       check(`${scheme}/${label}: long single-line text is visible without scrolling the box`, g.client >= room - 2, `box ${Math.round(g.h)}px, content ${g.scroll}px`);

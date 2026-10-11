@@ -69,6 +69,11 @@ func TestDecideBlocksExplicitPhaseOptOut(t *testing.T) {
 	if !got.Blocked || !strings.Contains(got.Message, "planning workflow") {
 		t.Fatalf("custom phase opt-out decision = %+v", got)
 	}
+
+	got = (Policy{}).Decide(Call{Name: "browser_open", Safety: PlanSafetyUnsafe, Effect: EffectSideEffect})
+	if !got.Blocked || got.Reason != BlockPhaseOptOut || !strings.Contains(got.Message, "web_fetch") {
+		t.Fatalf("browser_open should offer a planning-safe research path: %+v", got)
+	}
 }
 
 // Each refusal carries an identity a counter can group by. Collapsing them

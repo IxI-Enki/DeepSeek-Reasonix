@@ -67,14 +67,11 @@ func argumentsCutOff(arguments string) bool {
 // model chose to stop. A content filter is not one: it refused what was
 // written rather than leaving it unfinished.
 func truncatedTerminal(u *provider.Usage) bool {
-	if u == nil {
-		return false
-	}
-	switch u.FinishReason {
-	case "length", "repetition_truncation":
-		return true
-	}
-	return false
+	return u != nil && truncatedFinish(u.FinishReason)
+}
+
+func truncatedFinish(reason string) bool {
+	return reason == "length" || reason == "repetition_truncation"
 }
 
 // truncationCause reads a finish reason as a clause. The reason is the
@@ -116,4 +113,22 @@ func (b responseBoundary) noticeDetail() string {
 		return ""
 	}
 	return fmt.Sprintf("trailing tool call %q was incomplete and was not executed", b.dropped)
+}
+
+func finishReasonOf(u *provider.Usage) string {
+	if u == nil {
+		return ""
+	}
+	return u.FinishReason
+}
+
+// emptyFinalRetryMessage asks for a visible answer. When the host saw the
+// response cut off, the model is told that too: without it a reasoning pass
+// that filled the output limit repeats itself at the same length. The opening
+// is sessionstore.SyntheticUserPrefixes' entry for this message.
+func emptyFinalRetryMessage(u *provider.Usage) string {
+	if truncatedTerminal(u) {
+		return fmt.Sprintf("The previous assistant response finished without any visible answer text. Host fact, not a mistake in your work: it %s and was cut off while reasoning. Continue the same task now with a shorter reasoning pass and give a concise visible answer to the user. Do not send reasoning only.", truncationCause(u.FinishReason))
+	}
+	return "The previous assistant response finished without any visible answer text. Continue the same task now and provide a concise visible answer to the user. Do not send reasoning only."
 }

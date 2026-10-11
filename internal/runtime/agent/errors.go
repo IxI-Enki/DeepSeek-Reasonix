@@ -81,3 +81,23 @@ func (e *FinalReadinessError) Error() string {
 	}
 	return fmt.Sprintf("final-answer readiness failed %d times: %s", e.Attempts, e.Reason)
 }
+
+// EmptyFinalError reports that the model ended its response with no visible
+// answer text on every one of the host's retries. FinishReason is the last
+// terminal the provider reported, so a caller can tell a response cut off at
+// the output limit from one the model closed itself.
+type EmptyFinalError struct {
+	Blocks       int
+	FinishReason string
+}
+
+func (e *EmptyFinalError) Error() string {
+	if e == nil {
+		return "model finished without a visible final answer"
+	}
+	msg := fmt.Sprintf("model finished without a visible final answer %d times", e.Blocks)
+	if truncatedFinish(e.FinishReason) {
+		msg += fmt.Sprintf(" (the last response %s)", truncationCause(e.FinishReason))
+	}
+	return msg
+}

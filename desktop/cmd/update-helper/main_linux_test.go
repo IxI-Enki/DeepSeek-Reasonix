@@ -3,6 +3,7 @@
 package main
 
 import (
+	"bytes"
 	"crypto/rand"
 	"errors"
 	"fmt"
@@ -14,6 +15,7 @@ import (
 	"aead.dev/minisign"
 
 	"reasonix/internal/base/tempdir"
+	"reasonix/internal/platform/update"
 )
 
 func TestSanitizeHelperErrorStripsPaths(t *testing.T) {
@@ -594,5 +596,46 @@ func TestMinisignRejectsWrongKeyAndTamper(t *testing.T) {
 	code := runWith(d, []string{"install", "--package", pkg, "--signature", sigPath})
 	if code != exitVerifyFailed {
 		t.Fatalf("exit = %d, want verify failed; results=%+v", code, probe.results)
+	}
+}
+
+// The helper installs one package and the shell asks dpkg about the same one:
+// both must come from the update path's own line, or an in-app update is
+// refused as a different package.
+func TestHelperInstallsTheLineTheUpdatePathNames(t *testing.T) {
+	if packageName != update.StudioLine().Deb.Package {
+		t.Fatalf("helper accepts %q, the update path names %q", packageName, update.StudioLine().Deb.Package)
+	}
+	var out bytes.Buffer
+	old := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+	code := runWith(realDeps(), []string{"package"})
+	w.Close()
+	os.Stdout = old
+	_, _ = out.ReadFrom(r)
+	if code != exitOK || strings.TrimSpace(out.String()) != packageName {
+		t.Fatalf("package command = %d %q, want %q", code, out.String(), packageName)
+	}
+}
+
+// electron-builder names the packages; the helper must agree with both.
+func TestPackagedNamesMatchTheHelper(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join("..", "..", "electron", "electron-builder.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	names := map[string]string{}
+	section := ""
+	for line := range strings.SplitSeq(string(raw), "\n") {
+		if line != "" && !strings.HasPrefix(line, " ") && !strings.HasPrefix(line, "#") && strings.HasSuffix(strings.TrimSpace(line), ":") {
+			section = strings.TrimSuffix(strings.TrimSpace(line), ":")
+		}
+		if rest, ok := strings.CutPrefix(line, "  packageName:"); ok {
+			names[section] = strings.TrimSpace(rest)
+		}
+	}
+	if names["deb"] != packageName || names["rpm"] != packageName {
+		t.Fatalf("electron-builder.yml names deb %q and rpm %q, the helper accepts %q", names["deb"], names["rpm"], packageName)
 	}
 }

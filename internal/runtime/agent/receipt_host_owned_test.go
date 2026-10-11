@@ -55,9 +55,11 @@ func (f receiptFixture) write(t *testing.T, rel string) string {
 }
 
 func (f receiptFixture) record(paths ...string) {
-	f.ledger.Record(evidence.Receipt{
+	rec := evidence.Receipt{
 		ToolName: "bash", Success: true, Mutation: true, MutationEvidence: evidence.MutationProven, Paths: paths,
-	})
+	}
+	f.a.stampHostOwned(&rec)
+	f.ledger.Record(rec)
 }
 
 func (f receiptFixture) report() completion.Report {
@@ -138,7 +140,7 @@ func TestSnapshotStoreLinkedToSourceStaysListed(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := os.Symlink(filepath.Dir(real), link); err != nil {
-		t.Skipf("symlinks unavailable: %v", err)
+		t.Fatalf("this runner cannot create symlinks, so the protection is untested: %v", err)
 	}
 	f.record(filepath.Join(link, "api.py"))
 	rep := f.report()
@@ -162,3 +164,84 @@ func TestScanSkipsAVCSStoreKeptAsAFile(t *testing.T) {
 		t.Fatalf("scan lost the work file: %v", scan.state)
 	}
 }
+
+func mustLink(t *testing.T, target, link string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(link), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, link); err != nil {
+		t.Fatalf("this runner cannot create symlinks, so the protection is untested: %v", err)
+	}
+}
+
+func requireListed(t *testing.T, f receiptFixture, path string) {
+	t.Helper()
+	rep := f.report()
+	if rep.Mutations != 1 {
+		t.Fatalf("mutations = %d, want the write counted", rep.Mutations)
+	}
+	requirePaths(t, changedPaths(rep), path)
+}
+
+// The verdict is the filesystem as the write left it: removing the link
+// afterwards must not turn a counted write into a host-owned one.
+func TestLinkRemovedAfterTheWriteDoesNotHideIt(t *testing.T) {
+	f := newReceiptFixture(t)
+	real := f.write(t, filepath.Join("src", "api.py"))
+	link := filepath.Join(f.root, ".reasonix", "tasks", "x")
+	mustLink(t, filepath.Dir(real), link)
+	written := filepath.Join(link, "api.py")
+	f.record(written)
+	if err := os.Remove(link); err != nil {
+		t.Fatal(err)
+	}
+	requireListed(t, f, written)
+}
+
+func TestLinkedStoreRootsAndDanglingLinksStayListed(t *testing.T) {
+	for name, build := range map[string]func(f receiptFixture) string{
+		"the last segment is a link": func(f receiptFixture) string {
+			real := f.write(t, filepath.Join("src", "api.py"))
+			link := filepath.Join(f.root, ".reasonix", "tasks", "api.py")
+			mustLink(t, real, link)
+			return link
+		},
+		"the .reasonix directory is a link": func(f receiptFixture) string {
+			f.write(t, filepath.Join("src", "tasks", "api.py"))
+			mustLink(t, filepath.Join(f.root, "src"), filepath.Join(f.root, ".reasonix"))
+			return filepath.Join(f.root, ".reasonix", "tasks", "api.py")
+		},
+		"a dangling link": func(f receiptFixture) string {
+			link := filepath.Join(f.root, ".reasonix", "tasks", "gone")
+			mustLink(t, filepath.Join(f.root, "nowhere"), link)
+			return filepath.Join(link, "api.py")
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			f := newReceiptFixture(t)
+			path := build(f)
+			f.record(path)
+			requireListed(t, f, path)
+		})
+	}
+}
+
+// A path that climbs before it is cleaned is not judged by where the cleaned
+// spelling lands: this one cleans into the snapshot store but was written
+// through a ".." from outside it.
+func TestDotDotPathIntoTheStoreIsNeverHostOwned(t *testing.T) {
+	f := newReceiptFixture(t)
+	f.write(t, filepath.Join("src", "keep.py"))
+	sep := string(filepath.Separator)
+	climbing := f.root + sep + "src" + sep + ".." + sep + taskmonitor.StoreDir + sep + "step-5" + sep + "snapshot.json"
+	writeTestFile(t, filepath.Join(f.root, taskmonitor.StoreDir, "step-5", "snapshot.json"), "x\n")
+	f.record(climbing)
+	rep := f.report()
+	if rep.Mutations != 1 || len(rep.Changes) != 1 {
+		t.Fatalf("mutations = %d, changes = %q, want the write counted", rep.Mutations, changedPaths(rep))
+	}
+}
+
+// The verdict is the host's at the moment the call returned. A single bash
+// call that makes a link, writes through it and removes it again is not seen.

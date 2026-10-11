@@ -77,7 +77,7 @@ func (h shellHost) bashCandidates() []string {
 			out = append(out, p)
 		}
 	}
-	if p, err := h.lookPath("bash"); err == nil && !h.isWSL(p) {
+	if p, ok := h.lookShell("bash"); ok && !h.isWSL(p) {
 		add(p)
 	}
 	for _, p := range h.winBash {
@@ -166,23 +166,39 @@ type bashProbeIdentity struct {
 	modTime int64
 }
 
-// provenBash lives for the process and holds successes only.
+// provenBash lives for the process. It holds successes, and for a short window
+// the probes that hung: a bash that exists but never answers costs a probe
+// timeout every time it is asked, and nothing about the file changed between
+// asks. A probe that exited with a plain failure is cheap to repeat and not kept.
 var provenBash sync.Map
+
+// hungProbeMemory is how long a hung probe is not repeated for the same file.
+var hungProbeMemory = time.Minute
+
+type hungProbe struct{ at time.Time }
 
 func probeBashMemo(path string, run func(string) bool) bool {
 	return proveBash(path, run, nil, &provenBash)
 }
 
 // proveBash answers from this process's memo, then from a persisted proof of
-// the same bytes, and only then launches the probe.
+// the same bytes, and only then launches the probe. The file's identity is its
+// path, size and modification time.
 func proveBash(path string, run func(string) bool, store *shellProofStore, memo *sync.Map) bool {
 	fi, err := os.Stat(path)
 	if err != nil {
 		return run(path)
 	}
 	id := bashProbeIdentity{path: path, size: fi.Size(), modTime: fi.ModTime().UnixNano()}
-	if _, ok := memo.Load(id); ok {
-		return true
+	if v, ok := memo.Load(id); ok {
+		hung, wasHung := v.(hungProbe)
+		if !wasHung {
+			return true
+		}
+		if time.Since(hung.at) < hungProbeMemory {
+			return false
+		}
+		memo.Delete(id)
 	}
 	if store.holds(path, fi) {
 		memo.Store(id, struct{}{})
@@ -193,6 +209,9 @@ func proveBash(path string, run func(string) bool, store *shellProofStore, memo 
 		digest, _ = digestFile(path)
 	}
 	if !run(path) {
+		if bashProbeTimedOut(path) {
+			memo.Store(id, hungProbe{at: time.Now()})
+		}
 		return false
 	}
 	memo.Store(id, struct{}{})

@@ -63,20 +63,18 @@ interface Props {
 export function Gutter({ edge, span, width, max = span.max, label, open, onWidth, onOpen }: Props) {
   const held = useRef(0);
 
-  const drag = (e: ReactPointerEvent<HTMLDivElement>) => {
-    if (e.button !== 0) return;
-    const bar = e.currentTarget;
+  const rail = edge === "l";
+
+  const begin = (bar: HTMLDivElement, pointerId: number, x0: number) => {
     const app = bar.closest(".app") as HTMLElement | null;
     if (!app) return;
-    e.preventDefault();
 
-    const x0 = e.clientX;
     const wasShut = !open;
     let now = open ? width : span.min;
     let shut = wasShut;
     let over = 0;
     let raf = 0;
-    bar.setPointerCapture(e.pointerId);
+    bar.setPointerCapture(pointerId);
     bar.dataset.on = "";
     app.dataset.drag = "pointer";
 
@@ -138,8 +136,32 @@ export function Gutter({ edge, span, width, max = span.max, label, open, onWidth
     paint();
   };
 
+  const drag = (e: ReactPointerEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    begin(e.currentTarget, e.pointerId, e.clientX);
+  };
+
+  // A shut handle is only as tall as its grip, so the grip has to start the drag
+  // too; a press that never travels stays the click it always was.
+  const press = useRef<{ id: number; x0: number } | null>(null);
+  const grab = (e: ReactPointerEvent<HTMLButtonElement>) => {
+    e.stopPropagation();
+    if (e.button !== 0) return;
+    e.currentTarget.setPointerCapture(e.pointerId);
+    press.current = { id: e.pointerId, x0: e.clientX };
+  };
+  const travel = (e: ReactPointerEvent<HTMLButtonElement>) => {
+    const p = press.current;
+    if (!p || Math.abs(e.clientX - p.x0) <= 4) return;
+    press.current = null;
+    begin(e.currentTarget.parentElement as HTMLDivElement, p.id, p.x0);
+  };
+  const release = () => {
+    press.current = null;
+  };
+
   const toggle = () => onOpen(!open);
-  const rail = edge === "l";
 
   const key = (e: ReactKeyboardEvent<HTMLDivElement>) => {
     // The pointer commits by pushing through; the keyboard says it outright.
@@ -204,9 +226,16 @@ export function Gutter({ edge, span, width, max = span.max, label, open, onWidth
         tabIndex={-1}
         aria-hidden="true"
         title={open ? t("收起") : t("展开")}
-        onPointerDown={(e) => e.stopPropagation()}
+        onPointerDown={grab}
+        onPointerMove={travel}
+        onPointerUp={release}
+        onPointerCancel={release}
         onClick={toggle}
         data-action-click={rail ? "chrome.rail" : "browser.open"}
+        data-action-pointerdown={rail ? "chrome.rail" : "browser.open"}
+        data-action-pointermove={rail ? "chrome.rail" : "browser.open"}
+        data-action-pointerup={rail ? "chrome.rail" : "browser.open"}
+        data-action-pointercancel={rail ? "chrome.rail" : "browser.open"}
       >
         <i className="knurl" aria-hidden="true" />
         <span className="dir" aria-hidden="true">{(edge === "l") === open ? "‹" : "›"}</span>

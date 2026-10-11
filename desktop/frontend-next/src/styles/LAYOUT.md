@@ -96,6 +96,14 @@ rules are written in.
 - The separator between crumbs is a written character, not the 1px hairline
   `.sep`. Sharing that name puts the glyph in a 1px-wide box with a background,
   and the strokes spill out of it.
+- The sidebar has one toggle, and it does not move.
+  - `.studio-menu` is fixed to the window at `--lights-w + 10px`, above the rail column whatever the rail and the icon
+    column are doing; the sidebar header carries no second button.
+  - The bar's content and the sidebar's brand row reserve room for it (`--nav-w` is what the icon column already gives).
+  - The icon rail's conversation item toggles the sidebar when the conversation is showing, and returns to it from
+    settings; the sidebar's quick entries are drawn only while the rail is not.
+  - A run of replies from one model is headed once (`data-quiet`); a change of model, or a user message, brings the
+    header back.
 - Only identity is left on the top bar — which project, which session. The goal
   and the measurements moved to the run header.
 - A card the bar opens is a `[role="dialog"]`, and a dialog opts out whole:
@@ -276,6 +284,15 @@ rules are written in.
   was read, stored, written inline and then overridden every time.
 - `.gutter-l` outranks the rail because the rail is `position: fixed` at 12: a
   seam painted under the panel it divides cannot be grabbed where it matters.
+- A handle never lies over the scrollbar beside it.
+  - The scrollbar is the scroller's own right 10px. The workspace seam's handle starts one pixel inside it; the workbench
+    seam keeps its straddle and the transcript steps 6px in from it while docked (`.pbody` padding), so the handle's
+    inner half is empty ground.
+  - A shut workbench handle is only as tall as its grip, centred on the pane and set left of the scrollbar and the
+    transcript ticks. A full-height strip at the window edge sits on the transcript's scrollbar.
+  - The grip starts the drag itself once the press has travelled; a press that has not stays a click. The cost: a shut
+    column opens by dragging its grip, not any point on the edge.
+  - `perf/gutterhit.mjs` sweeps every row of the scrollbar and drags from it with the real mouse.
 - The rail's floor is 232px (`RAIL.min`); a narrower saved width is raised on
   read.
 - Under 232px the session filter row cannot hold four labels in either
@@ -358,7 +375,9 @@ rules are written in.
 - Rows inside the flow carry no ceiling of their own. A narrower cap on replies
   or user turns puts the steps card and the bubble short of the composer's edge.
 - The full measure moves `--doc` alone: the transcript widens and the composer
-  keeps the reading width, where the line being typed stays one glance.
+  keeps the reading width, where the line being typed stays one glance. The
+  full-all measure is the opt-in that moves `--column` with it, for a reader who
+  wants the composer on the same edges as the transcript.
 - Below 680px both columns take the phone rule instead (see *Phones*).
 - Docking the agent's browser puts the pane on a grid, and the browser's column
   spans the body's row and the composer's. Inside the conversation column `100%`
@@ -628,6 +647,13 @@ told apart by the colour of a symbol.
   - Under it the rail is a drawer, not a column (see *Phones*). No seam is left
     to drag and the chrome's rail button is the entrance, so the grip goes; so
     does the workbench grip, whose entrance is the 「工作台」 tab.
+- The title bar folds the same way: it gathers its controls under one button, it does not drop them.
+  - Below 300px of room (`bar`, in `viewport.ts`) the phone, find, theme, sandbox and browser buttons move into one
+    popover under a "more" button, every one still a press away.
+  - 300 is derived, not chosen: unfolded, the controls leave the title `room - 196` px, and 4em is its floor.
+  - `perf/narrow.mjs` sweeps the room from 190 to 460 and asserts the title keeps that floor, and that each control is
+    on screen with nothing over it, folded or not.
+  - Below `bar` the page tabs shrink and ellipsise rather than clip, and the meter row drops its cache figure first.
 - When both side columns have yielded, the transcript rail yields too; its ticks
   and viewport remain separately reachable.
 - A short window divides its height proportionally, and what is left over is the

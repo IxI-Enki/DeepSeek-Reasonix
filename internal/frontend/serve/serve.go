@@ -55,6 +55,7 @@ type Server struct {
 	ctrl     control.SessionAPI
 	bc       *Broadcaster
 	paneSink event.Sink // what the controller emits into; see SetPaneSink
+	currency *control.DisplayCurrencyGroup
 	// buildController builds the replacement controller during a model switch.
 	// Nil in production (switchModel falls back to boot.Build); tests inject a
 	// fake so switchModel can be exercised without real provider IO.
@@ -87,6 +88,9 @@ type Server struct {
 	// stance is the hub's Ask/Auto/YOLO posture, shared by every pane it drives.
 	// Nil for a server outside a hub, which speaks only for itself.
 	stance *approvalStance
+	// siblings lists the other local panes open on the same workspace, set by
+	// the hub; nil for a server outside one.
+	siblings func(self *Server) []*Server
 	// resolver is what every rebuild of this pane resolves models through, set
 	// by the hub. Nil leaves boot reading this machine's own config.
 	resolver provider.Resolver
@@ -159,11 +163,11 @@ func (s *Server) initTitleProvider() {
 	if err != nil {
 		return
 	}
-	ref, _, ok := cfg.ResolveStartupChatModel()
+	start, ok := cfg.ResolveStartupChatModel()
 	if !ok {
 		return
 	}
-	entry, ok := cfg.ResolveModel(ref)
+	entry, ok := cfg.ResolveModel(start.Ref)
 	if !ok || !entry.Configured() {
 		return
 	}
@@ -237,12 +241,21 @@ func (s *Server) switchModelLocked(ctx context.Context, ref string) error {
 	// Run/RunGraceful only wire the initial controller. Every replacement must
 	// receive the same frontend hooks or the ask tool falls back to headless mode.
 	newCtrl.EnableInteractiveApproval()
+	prevCtrl, _ := cur.(*control.Controller)
+	// A replacement that adopted the job manager must not close it on any exit.
+	discard := func() {
+		if newCtrl.SharesJobsWith(prevCtrl) {
+			newCtrl.CloseSharingJobs()
+			return
+		}
+		newCtrl.Close()
+	}
 	// One definition of what survives a rebuild, shared with boot.Rebuild: the
 	// conversation on its existing file (#2807), the fresh system contract
 	// spliced over the carried one, session authorizations, and the axes a
 	// switch must not silently reset — approval mode, plan mode, a running goal.
-	prevCtrl, _ := cur.(*control.Controller)
 	if err := boot.ApplyRuntimeMigration(newCtrl, prevCtrl, migration); err != nil {
+		discard()
 		return fmt.Errorf("switch model: %w", err)
 	}
 	newPath := newCtrl.SessionPath()
@@ -252,7 +265,7 @@ func (s *Server) switchModelLocked(ctx context.Context, ref string) error {
 	// would report a successful switch whose refreshed system contract disappears
 	// on restart. AdoptHistory retained the loaded CAS baseline for this rewrite.
 	if err := s.rebindSessionLeaseFor(newPath, newCtrl); err != nil {
-		newCtrl.Close()
+		discard()
 		if errors.Is(err, sessionstore.ErrSessionLeaseHeld) {
 			return fmt.Errorf("switch model: %s", sessionInUseError(err))
 		}
@@ -263,13 +276,13 @@ func (s *Server) switchModelLocked(ctx context.Context, ref string) error {
 			if oldCtrl, ok := cur.(*control.Controller); ok {
 				_ = s.rebindSessionLeaseFor(prevPath, oldCtrl)
 			}
-			newCtrl.Close()
+			discard()
 			return fmt.Errorf("switch model: snapshot adopted history: %w", err)
 		}
 	}
 	activePath := newCtrl.SessionPath()
 	if err := s.rebindSessionLeaseFor(activePath, newCtrl); err != nil {
-		newCtrl.Close()
+		discard()
 		if errors.Is(err, sessionstore.ErrSessionLeaseHeld) {
 			return fmt.Errorf("switch model: %s", sessionInUseError(err))
 		}
@@ -277,29 +290,23 @@ func (s *Server) switchModelLocked(ctx context.Context, ref string) error {
 		return fmt.Errorf("switch model: unable to secure replacement session")
 	}
 
-	// Publish the swap under a short write lock. bindMu already serializes
-	// switches — today the only writer of s.ctrl — so the identity re-check is
-	// defensive: it keeps a future controller-swapping path (or a test doing so)
-	// from being silently clobbered after the off-lock build. On a mismatch,
-	// discard the fresh controller off-lock instead of leaking it.
-	s.mu.Lock()
-	if s.ctrl != cur {
-		s.mu.Unlock()
+	if err := s.publishController(cur, newCtrl); err != nil {
 		oldCtrl, _ := cur.(*control.Controller)
 		if restoreErr := s.rebindSessionLeaseFor(cur.SessionPath(), oldCtrl); restoreErr != nil {
-			newCtrl.Close()
-			slog.Error("serve: restore outgoing session lease after aborted model switch", "err", restoreErr)
-			return fmt.Errorf("switch model: session changed during switch; unable to restore outgoing session ownership")
+			err = errors.Join(err, restoreErr)
 		}
-		newCtrl.Close()
-		return fmt.Errorf("switch model: session changed during switch")
+		discard()
+		return fmt.Errorf("switch model: %w", err)
 	}
-	s.ctrl = newCtrl
-	s.mu.Unlock()
 	s.nameWorkspaceHolder(newCtrl)
 	s.refreshProviderSetup(currentModelRef(newCtrl))
 
 	// Off-lock: tear down the old controller. Close can block up to 15s.
+	if newCtrl.SharesJobsWith(prevCtrl) {
+		newCtrl.TakeOverJobs()
+		prevCtrl.CloseHandingOffJobs()
+		return nil
+	}
 	cur.Close()
 	return nil
 }
@@ -353,19 +360,13 @@ func (s *Server) reloadExtensions(ctx context.Context) error {
 		return fmt.Errorf("reload extensions: unable to secure replacement session")
 	}
 
-	s.mu.Lock()
-	if s.ctrl != curAPI {
-		s.mu.Unlock()
+	if err := s.publishController(curAPI, newCtrl); err != nil {
 		if restoreErr := s.rebindSessionLeaseFor(cur.SessionPath(), cur); restoreErr != nil {
-			newCtrl.Close()
-			slog.Error("serve: restore outgoing session lease after aborted extension reload", "err", restoreErr)
-			return fmt.Errorf("reload extensions: session changed during reload; unable to restore outgoing session ownership")
+			err = errors.Join(err, restoreErr)
 		}
 		newCtrl.Close()
-		return fmt.Errorf("reload extensions: session changed during reload")
+		return fmt.Errorf("reload extensions: %w", err)
 	}
-	s.ctrl = newCtrl
-	s.mu.Unlock()
 	s.nameWorkspaceHolder(newCtrl)
 	s.refreshProviderSetup(currentModelRef(newCtrl))
 
@@ -523,20 +524,12 @@ func (s *Server) submit(w http.ResponseWriter, r *http.Request) {
 			keepUsedWorkspace(ctrl.WorkspaceRoot())
 		}
 	}
-	submitOrShell(ctrl, r, body.Input, body.Format, body.RefuseUnknownSlash, body.LocalShell)
-	// After synchronous admission, a successful start sets Running. A silent
-	// drop (rotating/closed) leaves Running false — return 409 instead of 202.
-	// Finishing-window park also leaves Running false briefly; prefer 202 only
-	// when Running or a pending prompt is observed, else durable-queue guidance.
-
-	// A management verb starts no turn, so Running cannot judge it: /compact
-	// answered 409 while doing exactly what was asked.
-	if !control.IsNonTurnInput(body.Input) && !ctrl.Running() && !ctrl.RuntimeStatus().PendingPrompt {
-		s.bindMu.Unlock()
+	refused := submitOrShell(ctrl, r, body.Input, body.Format, body.RefuseUnknownSlash, body.LocalShell)
+	s.bindMu.Unlock()
+	if refused {
 		sessionBusy(w)
 		return
 	}
-	s.bindMu.Unlock()
 	w.WriteHeader(http.StatusAccepted)
 }
 
@@ -569,7 +562,7 @@ func (s *Server) newSession(w http.ResponseWriter, _ *http.Request) {
 		writeErr(w, http.StatusInternalServerError, err)
 		return
 	}
-	s.bc.ResetSession()
+	s.resetSessionView()
 	// Fresh path — the lease follows it; failure is theoretical but not silent.
 	if err := s.rebindSessionLease(s.ctl().SessionPath()); err != nil {
 		sessionInUse(w, err)
@@ -1031,25 +1024,36 @@ func removeSessionFiles(absDir, abs string) error {
 }
 
 // modelSwitchRefusal says why a rebuild must wait. A turn in flight is waited
-// out or stopped; jobs left after the turn ended die with the controller being
-// replaced, so they are named separately with how many.
+// out or stopped; jobs left after it ended move to the replacement.
 func modelSwitchRefusal(ctrl control.SessionAPI) error {
 	if ctrl == nil {
 		return nil
 	}
 	status := ctrl.RuntimeStatus()
-	switch {
-	case status.Running || status.PendingPrompt:
+	if status.Running || status.PendingPrompt {
 		return busyErr(codeSwitchModel, "cannot switch model while a turn is running")
-	case status.BackgroundJobs > 0:
-		return refusal(http.StatusConflict, codeSwitchModelJobs,
-			errors.New("cannot switch model while background jobs are running"),
-			map[string]any{"count": status.BackgroundJobs})
+	}
+	// Only a *control.Controller can hand its jobs to a replacement; any other
+	// implementation would cancel them when it is closed.
+	if _, ok := ctrl.(*control.Controller); !ok && status.BackgroundJobs > 0 {
+		return busyErr(codeSwitchModel, "cannot switch model while background jobs are running")
 	}
 	return nil
 }
 
 func isSwitchBusy(err error) bool {
 	code := codedRefusal(err)
-	return code == codeSwitchModel || code == codeSwitchModelJobs
+	return code == codeSwitchModel
+}
+
+// resetSessionView retires what clients were shown for the previous
+// conversation: the replay log, and the build-time notices a rebuild would
+// otherwise treat as already seen.
+func (s *Server) resetSessionView() {
+	s.bc.ResetSession()
+	if ctrl, ok := s.ctl().(*control.Controller); ok {
+		if owner := ctrl.RuntimeOwner(); owner != nil && owner.Notices != nil {
+			owner.Notices.Reset()
+		}
+	}
 }

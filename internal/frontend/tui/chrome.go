@@ -97,7 +97,7 @@ func (m *model) workingLine() string {
 		return ""
 	}
 	since := time.Since(m.runSince)
-	secs := int(since.Seconds())
+	elapsed := i18n.Elapsed(since)
 	const mark = "\x00"
 	var line string
 	switch label := phaseLabel(m.tr.Phase); {
@@ -106,11 +106,11 @@ func (m *model) workingLine() string {
 		if m.viActive() {
 			stop = i18n.M.ChatStatusCancellingViFmt
 		}
-		line = fmt.Sprintf("  "+stop, mark, secs)
+		line = fmt.Sprintf("  "+stop, mark, elapsed)
 	case label != "":
-		line = fmt.Sprintf("  %s %s · %ds", mark, label, secs)
+		line = fmt.Sprintf("  %s %s · %s", mark, label, elapsed)
 	default:
-		line = fmt.Sprintf("  "+i18n.M.ChatStatusThinkingFmt, mark, secs, m.interruptKey())
+		line = fmt.Sprintf("  "+i18n.M.ChatStatusThinkingFmt, mark, elapsed, m.interruptKey())
 	}
 	if m.tr.TurnOut > 0 {
 		line += " · ↓" + shortTokens(m.tr.TurnOut)

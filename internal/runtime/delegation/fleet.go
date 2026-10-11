@@ -371,6 +371,9 @@ func (f *FleetTool) runFleet(ctx context.Context, sink event.Sink, specs []Profi
 			itemCtx := withDeclaredGraphNode(agent.WithCallContext(ctx, subID, subSinkFor(subID, sink), nil, false), sink, subID)
 			out, err := f.taskTool.RunProfileSpec(itemCtx, spec)
 			answer, ref := splitSubagentRunResult(out)
+			if stoppedRef, cause := stoppedRun(err); stoppedRef != "" {
+				ref, err = stoppedRef, cause
+			}
 			res := fleetItemResult{index: idx, profile: spec.Worker.Profile, output: answer, ref: ref, err: err}
 			switch {
 			case err == nil:

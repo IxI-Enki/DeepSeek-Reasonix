@@ -46,6 +46,7 @@ func stabilize(in []eventwire.Event) []eventwire.Event {
 	out := make([]eventwire.Event, 0, len(in))
 	for _, e := range in {
 		e.Seq = 0
+		e.WorkDurationMs = min(e.WorkDurationMs, 1) // a measured wall clock; only whether the turn reported one is structure
 		if e.StreamAttempt != nil {
 			sa := *e.StreamAttempt
 			sa.ID = name(rounds, "r", sa.ID)

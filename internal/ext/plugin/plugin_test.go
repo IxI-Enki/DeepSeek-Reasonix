@@ -1286,6 +1286,7 @@ func TestHelperProcess(t *testing.T) {
 	}
 
 	in := bufio.NewReader(os.Stdin)
+	helperInitialized := false
 	for {
 		line, err := in.ReadBytes('\n')
 		if err != nil {
@@ -1309,6 +1310,14 @@ func TestHelperProcess(t *testing.T) {
 		}
 
 		var result any
+		// GO_WANT_HELPER_DEAF_BEFORE_INIT is a server whose SDK aborts serving on
+		// a first message that is not initialize but leaves the process running.
+		if os.Getenv("GO_WANT_HELPER_DEAF_BEFORE_INIT") == "1" && !helperInitialized && req.Method != "initialize" {
+			time.Sleep(time.Hour)
+		}
+		if req.Method == "initialize" {
+			helperInitialized = true
+		}
 		// GO_WANT_HELPER_MODERN serves 2026-07-28 only: discovery answers,
 		// initialize is an unknown method, and a request without _meta is refused.
 		if os.Getenv("GO_WANT_HELPER_MODERN") == "1" {

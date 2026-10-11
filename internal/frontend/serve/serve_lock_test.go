@@ -164,28 +164,31 @@ func TestSwitchModelRejectsWhileRunning(t *testing.T) {
 	waitNotRunning(t, ctrl)
 }
 
-func TestSwitchModelRejectsWhileBackgroundJobRunning(t *testing.T) {
+func TestSwitchModelHandsARunningBackgroundJobToTheReplacement(t *testing.T) {
 	bc := NewBroadcaster()
 	manager := jobs.NewManager(bc)
 	ctrl := control.New(control.Options{Sink: bc, Jobs: manager})
-	defer ctrl.Close()
-	manager.Start("task", "running", func(ctx context.Context, _ io.Writer) (string, error) {
+	var next *control.Controller
+	t.Cleanup(func() { next.Close() })
+	job := manager.Start("task", "running", func(ctx context.Context, _ io.Writer) (string, error) {
 		<-ctx.Done()
 		return "", ctx.Err()
 	})
 
 	s := &Server{ctrl: ctrl, bc: bc}
-	built := false
 	s.buildController = func(_ context.Context, _ string) (*control.Controller, error) {
-		built = true
-		return control.New(control.Options{Sink: bc}), nil
+		next = control.New(control.Options{Sink: bc, Jobs: manager})
+		return next, nil
 	}
 
-	if err := s.switchModel(context.Background(), "next-model"); err == nil {
-		t.Fatal("expected switchModel to refuse while a background job is running")
+	if err := s.switchModel(context.Background(), "next-model"); err != nil {
+		t.Fatalf("switchModel with only a background job running: %v", err)
 	}
-	if built {
-		t.Fatal("switchModel built a controller despite a running background job")
+	if s.ctl() != control.SessionAPI(next) {
+		t.Fatal("the replacement was not published")
+	}
+	if running := next.Jobs(); len(running) != 1 || running[0].ID != job.ID {
+		t.Fatalf("replacement sees jobs %v, want only %s", running, job.ID)
 	}
 }
 
@@ -329,5 +332,38 @@ func waitNotRunning(t *testing.T, ctrl *control.Controller) {
 			t.Fatal("controller never left the running state after cancel")
 		case <-time.After(5 * time.Millisecond):
 		}
+	}
+}
+
+// A switch that fails after the replacement was built leaves the original as
+// what the job table answers to, and its job running.
+func TestAbortedSwitchLeavesTheOriginalOwningItsJobs(t *testing.T) {
+	bc := NewBroadcaster()
+	manager := jobs.NewManager(bc)
+	ctrl := control.New(control.Options{Sink: bc, Jobs: manager})
+	t.Cleanup(ctrl.Close)
+	manager.Start("task", "running", func(ctx context.Context, _ io.Writer) (string, error) {
+		<-ctx.Done()
+		return "", ctx.Err()
+	})
+	other := control.New(control.Options{Sink: bc})
+	t.Cleanup(other.Close)
+
+	s := &Server{ctrl: ctrl, bc: bc}
+	s.buildController = func(_ context.Context, _ string) (*control.Controller, error) {
+		s.mu.Lock()
+		s.ctrl = other
+		s.mu.Unlock()
+		return control.New(control.Options{Sink: bc, Jobs: manager}), nil
+	}
+
+	if err := s.switchModel(context.Background(), "next-model"); err == nil {
+		t.Fatal("a switch whose session changed underneath it reported success")
+	}
+	if !manager.ObservedBy(ctrl) {
+		t.Fatal("the original is no longer the job table's completion observer after the aborted switch")
+	}
+	if len(manager.Running()) != 1 {
+		t.Fatal("the aborted switch cancelled the original's job")
 	}
 }

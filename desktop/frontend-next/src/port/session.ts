@@ -1,5 +1,5 @@
 import type { ModelMode } from "./model";
-import type { Via } from "./wire";
+import type { StoredAttachment, Via } from "./wire";
 // A conversation and the states it passes through: what is running, what it
 // cost, and the points it can be wound back to.
 // GET /history: the event stream is live-only, so a reload rebuilds from these.
@@ -23,7 +23,10 @@ export interface HistoryMessage {
   modelRef?: string;
   reasoning?: string;
   thoughtMs?: number; // kernel-measured; absent on turns recorded before it was
+  workDurationMs?: number; // only on the answer that closed a turn
   images?: number; // attachments on a user turn; an image-only one has no text
+  // The stored files a user message references, resolved by the kernel.
+  attachments?: StoredAttachment[];
   toolCalls?: HistoryToolCall[];
   toolCallId?: string;
   toolName?: string;

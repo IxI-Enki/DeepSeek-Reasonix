@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net/http"
 	"strings"
 )
 
@@ -60,12 +59,7 @@ func InstallResultForError(name string, err error) MCPInstallResult {
 		return MCPInstallResult{Name: name, State: "action_required", Action: "authorize", Message: err.Error()}
 	}
 	msg := err.Error()
-	lower := strings.ToLower(msg)
-	var status *httpStatusError
-	if errors.As(err, &status) && (status.Status == http.StatusUnauthorized || status.Status == http.StatusForbidden) {
-		return MCPInstallResult{Name: name, State: "action_required", Action: "authenticate", Message: msg}
-	}
-	if strings.Contains(lower, "auth") || strings.Contains(lower, "oauth") || strings.Contains(lower, "unauthorized") || strings.Contains(lower, "forbidden") {
+	if errors.Is(err, ErrAuthenticationRequired) {
 		return MCPInstallResult{Name: name, State: "action_required", Action: "authenticate", Message: msg}
 	}
 	return MCPInstallResult{Name: name, State: "issue", Action: "retry", Message: msg}

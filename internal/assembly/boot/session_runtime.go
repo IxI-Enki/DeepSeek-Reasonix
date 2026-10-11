@@ -29,14 +29,21 @@ func startSessionRuntime(opts Options, cfg *config.Config, root string, sink eve
 		jobs.WithStalledWarningAfter(time.Duration(cfg.BackgroundJobStalledWarningSeconds()) * time.Second),
 		jobs.WithSessionOwnershipProbe(sessionstore.SessionLeaseHeldByCurrentRuntime),
 	}
-	lease, err := workspacelease.New(root, config.WorkspaceLeaseDir(), func(w workspacelease.Wait) {
-		sink.Emit(workspaceLeaseNotice(w))
-	})
-	if err != nil {
-		return sessionRuntime{}, fmt.Errorf("initialize workspace write lease: %w", err)
+	lease := opts.WorkspaceLease
+	if lease == nil {
+		var err error
+		lease, err = workspacelease.New(root, config.WorkspaceLeaseDir(), func(w workspacelease.Wait) {
+			sink.Emit(workspaceLeaseNotice(w))
+		})
+		if err != nil {
+			return sessionRuntime{}, fmt.Errorf("initialize workspace write lease: %w", err)
+		}
+		lease.OnRelease(func(st workspacelease.Stats) { sink.Emit(workspaceLeaseAccount(st)) })
 	}
-	lease.OnRelease(func(st workspacelease.Stats) { sink.Emit(workspaceLeaseAccount(st)) })
-	manager := jobs.NewManager(sink, jobOptions...)
+	manager := opts.Jobs
+	if manager == nil {
+		manager = jobs.NewManager(sink, jobOptions...)
+	}
 
 	dir := opts.SessionDir
 	if dir == "" {

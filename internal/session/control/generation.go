@@ -1,7 +1,6 @@
 package control
 
 import (
-	"reasonix/internal/contract/event"
 	"reasonix/internal/ext/extension"
 )
 
@@ -80,7 +79,7 @@ func (c *Controller) emitDrainingNotice() {
 	if c == nil {
 		return
 	}
-	c.sink.Emit(event.Event{Kind: event.Notice, Level: event.LevelWarn, Text: "input was not accepted: runtime is draining after rebuild — please resend"})
+	c.noticeInputRefused("input was not accepted: runtime is draining after rebuild — please resend")
 }
 
 // LastResumeDecision returns the most recent DecideResume result from

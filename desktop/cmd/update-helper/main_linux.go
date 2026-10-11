@@ -37,11 +37,11 @@ const (
 	exitPostVerify      = 16
 )
 
-// packageName is the only dpkg package this helper will install, fixed at
-// build time so no runtime input can redirect it. Studio builds the same
-// source with its own name; each package installs its own binary, and Polkit
-// authorizes that path alone.
-var packageName = "reasonix-desktop"
+// packageName is the only dpkg package this helper will install. It is Studio's
+// line as the update path states it, compiled in, so no runtime input can
+// redirect it and no build step has a value to forget; Polkit authorizes this
+// helper's own path alone.
+var packageName = update.StudioLine().Deb.Package
 
 const (
 	dpkgDebPath   = "/usr/bin/dpkg-deb"
@@ -124,6 +124,9 @@ func runWith(d installDeps, args []string) int {
 	switch args[0] {
 	case "install":
 		return runInstall(d, args[1:])
+	case "package":
+		fmt.Fprintln(os.Stdout, packageName)
+		return exitOK
 	default:
 		d.writeResult(helperResult{OK: false, Error: "unknown command", Code: "usage"})
 		return exitUsage

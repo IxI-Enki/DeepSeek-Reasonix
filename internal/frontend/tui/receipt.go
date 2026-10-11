@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"reasonix/internal/base/i18n"
+	"reasonix/internal/contract/event"
 	"reasonix/internal/contract/eventwire"
 	"reasonix/internal/frontend/termrender"
 )
@@ -16,9 +17,12 @@ const maxReceiptGaps = 5
 // renderReceipt is the end-of-turn card. A clean turn gets one quiet line
 // naming what carried it; otherwise the card spends its lines on what went
 // unproven, then on what the turn itself declared.
-func renderReceipt(r *eventwire.CompletionReceipt, width int) string {
+func renderReceipt(r *eventwire.CompletionReceipt, width int, line bool) string {
 	if r == nil {
 		return ""
+	}
+	if line {
+		return renderReceiptLine(r, width)
 	}
 	row := max(width-8, 24)
 	if len(r.Gaps) == 0 {
@@ -76,4 +80,21 @@ func receiptEvidence(r *eventwire.CompletionReceipt) string {
 		return ""
 	}
 	return " · " + strings.Join(parts, " · ")
+}
+
+// renderReceiptLine is what stands in for the card: one line, only when the
+// kernel graded the receipt. The grade is the kernel's; this picks the colour.
+func renderReceiptLine(r *eventwire.CompletionReceipt, width int) string {
+	if r.Severity == "" {
+		return ""
+	}
+	text := i18n.M.ReceiptGapKinds["hint:declared"]
+	if len(r.Gaps) > 0 {
+		text = i18n.M.ReceiptGapKinds["hint:gaps"]
+	}
+	text = oneLine(text, max(width-4, 24))
+	if r.Severity == event.ReceiptSeverityWarn {
+		return "\n" + termrender.Yellow("  ! "+text)
+	}
+	return "\n" + termrender.Dim("  · "+text)
 }

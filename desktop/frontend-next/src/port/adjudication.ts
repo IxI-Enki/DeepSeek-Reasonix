@@ -9,7 +9,7 @@
 // `state` comes from the kernel because "interrupted" appears in no record: it
 // is what an open barrier means once nothing is waiting on it, and only the
 // host knows whether anything still is.
-export type AdjudicationState = "interrupted" | "resolved" | "cancelled" | "superseded";
+export type AdjudicationState = "interrupted" | "resolved" | "cancelled" | "timed_out" | "superseded";
 
 export interface AdjudicationEntry {
   barrier_id: string;

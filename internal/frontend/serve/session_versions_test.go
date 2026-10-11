@@ -48,7 +48,7 @@ func seedVersionedSession(t *testing.T) (root, parentPath, version string) {
 // The sidebar shows one row for the conversation, with the version under it.
 func TestSidebarHangsVersionsUnderTheirConversation(t *testing.T) {
 	root, parentPath, version := seedVersionedSession(t)
-	rows := NewHub(HubOptions{}).workspaceSessions(root, map[string]string{})
+	rows := NewHub(HubOptions{}).workspacePage(root, "", map[string]string{}, treeWindow{}, 0).Sessions
 	if len(rows) != 1 || rows[0].Path != parentPath {
 		t.Fatalf("rows = %+v, want only the conversation", rows)
 	}
@@ -102,7 +102,7 @@ func TestSidebarListsAnOpenVersionOnce(t *testing.T) {
 	root, parentPath, version := seedVersionedSession(t)
 	h := NewHub(HubOptions{})
 	paneOn(t, h, root, version)
-	rows := h.workspaceSessions(root, h.openSessions())
+	rows := h.workspacePage(root, "", h.openSessions(), treeWindow{}, 0).Sessions
 	if len(rows) != 2 || countPath(rows, version) != 1 || countPath(rows, parentPath) != 1 {
 		t.Fatalf("rows = %+v, want the conversation and the open version once each", rows)
 	}
@@ -122,7 +122,7 @@ func TestSidebarKeepsAVersionOpenedFromAnotherRoot(t *testing.T) {
 	root, parentPath, version := seedVersionedSession(t)
 	h := NewHub(HubOptions{})
 	paneOn(t, h, testenv.TempDir(t), version)
-	rows := h.workspaceSessions(root, h.openSessions())
+	rows := h.workspacePage(root, "", h.openSessions(), treeWindow{}, 0).Sessions
 	if len(rows) != 1 || rows[0].Path != parentPath || countPath(rows, version) != 1 || len(rows[0].Versions) != 1 {
 		t.Fatalf("rows = %+v, want the version under its conversation", rows)
 	}

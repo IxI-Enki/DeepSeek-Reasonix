@@ -16,6 +16,7 @@ export const NOTICE_TEXT: Record<string, string> = {
   project_program_changed: "这个项目的程序在批准后被改动过，本次没有运行，需要重新批准",
   project_mcp_awaiting_approval: "这个项目声明的一个 MCP 服务要你批准后才会运行；详情里是它要启动的命令",
   project_mcp_changed: "一个已启用的项目 MCP 服务要启动的内容变了，本次没有运行，需要查看命令后重新启用",
+  mcp_tools_held: "一个 MCP 服务有工具的定义是新增的或与你批准过的不同，已暂不提供给模型；详情里是这些工具，核对服务后再接受",
   hook_unevaluable: "有一个钩子无法被评估（匹配串无效、无法启动或载荷无法序列化），为安全起见已拦截这次操作；到钩子设置里修复或移除该钩子",
   suspected_injection: "一条外部内容看起来在向智能体下指令，已提醒它只当资料看待",
   await_user: "等待你的输入",
@@ -24,6 +25,7 @@ export const NOTICE_TEXT: Record<string, string> = {
   memory_migration_backup: "旧版记忆文件没能先备份，所以没有迁移，保持原样；详情里有具体原因",
   inbox_recovered: "已恢复 {n} 条未完成的指令。待发送已暂停，请先在输入框上方的队列里查看，再点“继续派发”",
   queue_paused_hold: "待发送已暂停，这条消息已排入队列，点“继续派发”后才会发送",
+  input_refused: "会话、工作区或运行时正在切换，这条消息没能立刻发出；它已排入队列，切换结束后会自动发送，不需要重发",
   unapplied_steer: "引导没有生效：这一轮在处理它之前就结束了。如果仍然需要，请再发送一次：",
   display_currency: "费用显示币种已设为 {mode}",
   job_finished: "后台任务已结束：{name}",
@@ -35,5 +37,6 @@ export const NOTICE_TEXT: Record<string, string> = {
   compact_held: "自动压缩暂缓，上次尝试没有完成：{why}",
   permission_rules_dormant: "有 {n} 条权限规则没有对应的工具，匹配不到任何调用，因此起不到限制作用（如「{list}」里的 {rule}）；到「设置 → 权限」里删除或改写，命令要写成 Bash(命令:*)",
   extension_skipped: "扩展 {ext} 的配套后台程序没有运行，该扩展本次（在 {point}）已被跳过；到「工具与集成」里查看并启动它，或停用该扩展",
+  ask_timeout_invalid: "配置文件里的提问等待时长无效（须为 0 或 10 到 86400 之间的整数），提问现在会一直等你回答；到设置里重新设一个",
   perseveration_loop: "模型卡在重复输出同一段文字，这一轮已停止；可以重试、补充引导，或换一个供应商/模型",
 };

@@ -11,6 +11,7 @@ import { Cost } from "../Cost";
 import { seconds, tokens } from "../../i18n/format";
 import { currentStep, parsePlan, stepDone } from "../../state/session";
 import { DiffView } from "./DiffView";
+import { WaitNote } from "./WaitNote";
 import { Term, ToolOutput, BoundNote } from "./ToolOutput";
 import { ExtensionView } from "./ExtensionView";
 import { toolChangedFile, toolFailed, toolFailureLabel, toolRefusalReason } from "./outcome";
@@ -117,11 +118,13 @@ export function ToolCard({
   }, [bad]);
   const open = touched ?? start;
   const changes = changeCounts(tool);
+  const activityArgs = activity ? prettyArgs(tool.args) : "";
+  // A call being watched in the activity group opens to its input even with no
+  // output yet: a row that cannot open is the one that looks stuck.
   const hasBody = Boolean(
     takeover || tool.diff || goal || tool.name === "todo_write" ||
-    (tool.output && !echoed && children.length === 0) || tool.err || children.length,
+    (tool.output && !echoed && children.length === 0) || tool.err || children.length || (activity && running && activityArgs),
   );
-  const activityArgs = activity ? prettyArgs(tool.args) : "";
   const activityResult = Boolean(
     takeover || tool.diff || goal || tool.name === "todo_write" || tool.output || tool.err || children.length,
   );
@@ -133,7 +136,7 @@ export function ToolCard({
       {who && <span className="who" title={t("按技能 {name} 的设定运行的子代理", { name: who })}>{who}</span>}
       {from && <span className="src" title={t("外部服务 {name} 提供的工具", { name: from.server })}>{from.server}</span>}
       {tag && <span className="tag" title={tagHint(tool)}>{tag}</span>}
-      {arg && <span className={streaming ? "arg shim" : "arg"}>{arg}</span>}
+      {arg && <span className={streaming ? "arg shim" : "arg"} title={streaming ? undefined : prettyArgs(tool.args)}>{arg}</span>}
       {changes && (
         <span className="tool-delta" aria-label={t("新增 {added} 行，删除 {removed} 行", changes)}>
           <b>+{changes.added}</b><i>−{changes.removed}</i>
@@ -166,6 +169,7 @@ export function ToolCard({
               <pre>{activityArgs}</pre>
             </section>
           )}
+          {running && !tool.output && !tool.err && children.length === 0 && <WaitNote args={tool.args} />}
           {activityResult && (
             <div className="activity-call-result">
               <b>{t("结果")}</b>

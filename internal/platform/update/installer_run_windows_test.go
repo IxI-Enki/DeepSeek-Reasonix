@@ -84,3 +84,30 @@ func TestRunInstallerRejectsMissingInstaller(t *testing.T) {
 		}
 	}
 }
+
+func TestRunInstallerPassesTheLinesInstallerArguments(t *testing.T) {
+	installer := filepath.Join(tempdir.New(t), "installer.exe")
+	if err := os.WriteFile(installer, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for name, tc := range map[string]struct {
+		line Line
+		want string
+	}{
+		"studio":       {StudioLine(), "--updated"},
+		"no arguments": {Line{Windows: WindowsLine{Installer: WindowsInstallerPerUser}}, ""},
+	} {
+		t.Run(name, func(t *testing.T) {
+			var got string
+			err := tc.line.runInstaller(installer, func(_ windows.Handle, _, _, args, _ *uint16, _ int32) error {
+				if args != nil {
+					got = windows.UTF16PtrToString(args)
+				}
+				return nil
+			})
+			if err != nil || got != tc.want {
+				t.Fatalf("ShellExecute parameters = %q, %v; want %q", got, err, tc.want)
+			}
+		})
+	}
+}

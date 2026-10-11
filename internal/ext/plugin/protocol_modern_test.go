@@ -327,3 +327,22 @@ func TestModernInputRoundIsBounded(t *testing.T) {
 		t.Fatalf("rounds = %d, want the flood refused before answering it", m.rounds)
 	}
 }
+
+// A server SDK that gives up serving on a first message other than initialize
+// leaves the child running and silent. The probe must not cost it its
+// handshake: initialize goes to a fresh child.
+func TestStdioServerThatGoesDeafAfterTheProbeStillGetsItsHandshake(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	env := map[string]string{"GO_WANT_HELPER_PROCESS": "1", "GO_WANT_HELPER_DEAF_BEFORE_INIT": "1"}
+	host, tools, err := StartAll(ctx, []Spec{{Name: "deaf", Command: os.Args[0], Args: []string{"-test.run=TestHelperProcess", "--"}, Env: env}})
+	if err != nil {
+		t.Fatalf("StartAll: %v", err)
+	}
+	defer host.Close()
+	echo := findToolByName(tools, "mcp__deaf__echo")
+	out, err := echo.Execute(ctx, json.RawMessage(`{"msg":"hi"}`))
+	if err != nil || out != "echo: hi" {
+		t.Fatalf("Execute = %q, %v", out, err)
+	}
+}

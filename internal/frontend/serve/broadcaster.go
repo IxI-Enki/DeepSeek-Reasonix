@@ -26,6 +26,7 @@ type Broadcaster struct {
 	seq                    int64
 	replay                 replayLog
 	initialNoticesReplayed bool
+	onTreeChanged          func()
 }
 
 // NewBroadcaster returns an empty Broadcaster ready to accept subscribers.
@@ -106,7 +107,23 @@ func (b *Broadcaster) SessionCostQuote() pricing.CostQuote {
 func (b *Broadcaster) Emit(e event.Event) {
 	drop := droppable(e.Kind)
 	b.mu.Lock()
-	defer b.mu.Unlock()
+	defer func() {
+		observer := b.onTreeChanged
+		b.mu.Unlock()
+		if observer != nil {
+			switch e.Kind {
+			case event.TurnStarted, event.TurnDone:
+				observer()
+			case event.Notice:
+				switch e.Code {
+				case event.NoticeCodeSessionRecoveryForked, event.NoticeCodeSessionRecoveryAdopted,
+					event.NoticeCodeSessionRecoveryAdoptedCovered, event.NoticeCodeSessionShutdownRecoveryForked,
+					event.NoticeCodeSessionContinuedFrom1x:
+					observer()
+				}
+			}
+		}
+	}()
 	w := eventwire.ToWire(e)
 	if !drop {
 		b.seq++

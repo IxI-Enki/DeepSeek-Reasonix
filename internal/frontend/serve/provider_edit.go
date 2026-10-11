@@ -25,8 +25,11 @@ func (s *Server) editProvider(w http.ResponseWriter, r *http.Request) {
 	// empty" stay different answers: a client that does not show them must not
 	// silently clear the headers a gateway needs.
 	var body struct {
-		Name            string   `json:"name"`
-		BaseURL         string   `json:"baseUrl"`
+		Name    string `json:"name"`
+		BaseURL string `json:"baseUrl"`
+		// The wire format. A different one is the same account spoken to
+		// another way, so it is a change to this entry, not a new entry.
+		Kind            *string  `json:"kind"`
 		APIKey          string   `json:"apiKey"`
 		Models          []string `json:"models"`
 		Default         string   `json:"default"`
@@ -77,6 +80,9 @@ func (s *Server) editProvider(w http.ResponseWriter, r *http.Request) {
 	}
 	if base := strings.TrimSpace(body.BaseURL); base != "" {
 		entry.BaseURL = base
+	}
+	if !applyKind(w, entry, body.Kind) {
+		return
 	}
 	entry.Models = models
 	entry.Model = ""
@@ -172,7 +178,7 @@ func assemblyShape(e *config.ProviderEntry) string {
 		return v
 	}
 	shape := []any{
-		e.BaseURL, orNil(len(e.Models), e.Models), e.Vision, orNil(len(e.VisionModels), e.VisionModels),
+		e.Kind, e.BaseURL, orNil(len(e.Models), e.Models), e.Vision, orNil(len(e.VisionModels), e.VisionModels),
 		orNil(len(e.ModelOverrides), e.ModelOverrides), e.ContextWindow, e.MaxOutputTokens,
 		orNil(len(e.Headers), e.Headers), orNil(len(e.ExtraBody), e.ExtraBody), e.ReasoningProtocol,
 		orNil(len(e.SupportedEfforts), e.SupportedEfforts), e.DefaultEffort, e.IdleTimeoutSeconds,
@@ -184,6 +190,33 @@ func assemblyShape(e *config.ProviderEntry) string {
 		return fmt.Sprintf("%#v", shape)
 	}
 	return string(b)
+}
+
+// applyKind moves an entry to another wire of the same role and answers the
+// refusal itself. An alias is stored as its canonical kind.
+func applyKind(w http.ResponseWriter, entry *config.ProviderEntry, requested *string) bool {
+	if requested == nil {
+		return true
+	}
+	kind := strings.ToLower(strings.TrimSpace(*requested))
+	wire, known := config.ProtocolFor(kind)
+	if !known || config.AnswersFor(kind) != config.AnswersFor(entry.Kind) {
+		refuse(w, http.StatusUnprocessableEntity, "provider.kind_unsupported",
+			fmt.Sprintf("unsupported provider kind %q", kind), map[string]any{"kind": kind})
+		return false
+	}
+	if wire.Kind == entry.Kind {
+		return true
+	}
+	// Every wire reads request_url, and auth_header shapes one wire's
+	// credentials, so the pinned values would be sent to the new protocol.
+	if entry.RequestURL != "" || entry.ChatURL != "" || entry.AuthHeader {
+		refuse(w, http.StatusConflict, "provider.kind_pinned_endpoint",
+			"this source pins a request URL or auth header written for its current protocol", map[string]any{"kind": wire.Kind})
+		return false
+	}
+	entry.Kind = wire.Kind
+	return true
 }
 
 // applyReasoningFields stores the protocol, the connection's effort vocabulary

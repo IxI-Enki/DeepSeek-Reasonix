@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"reasonix/internal/base/i18n"
 	"strings"
 	"testing"
 
@@ -146,5 +147,17 @@ func TestMCPPanelTakesTheOneXKeys(t *testing.T) {
 	}
 	if calls := strings.Join(k.seen(), "\n"); strings.Contains(calls, "POST /mcp") {
 		t.Fatalf("moving through the panel changed a server:\n%s", calls)
+	}
+}
+
+func TestMCPPanelKeepsTheHiddenCharactersMarkerWhenTheLaunchIsClipped(t *testing.T) {
+	m, _ := testModel(t)
+	enterMCPLine(m, "/mcp")
+	run(m, press(m, "down"))
+	m.mcp.servers[1].Launch = i18n.M.LaunchHiddenRemoved + " node " + strings.Repeat("x", 400)
+	_, cmd := m.Update(tea.KeyPressMsg{Code: tea.KeySpace, Text: " "})
+	run(m, cmd)
+	if v := m.View().Content; !strings.Contains(v, i18n.M.LaunchHiddenRemoved) {
+		t.Fatalf("the clipped launch line lost its marker:\n%q", v)
 	}
 }

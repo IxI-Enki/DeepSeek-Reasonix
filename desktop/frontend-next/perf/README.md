@@ -68,6 +68,13 @@ node perf/find.mjs       # 对话内查找：快捷键穿过输入框、跳到�
 node perf/focus.mjs      # 专注的守卫：拿走外围之后，退出时世界是否原样
 node perf/tooltip.mjs    # 控件提示的守卫：文字不溢出提示框、不在半透明祖先之下、对比度达 AA（深浅×中英×宽窄）
 node perf/navhint.mjs   # Icon-rail hover hints: drawn, inside the window, clipped by no ancestor, painted over by nothing (light/dark × on/collapsed)
+node perf/runningtool.mjs # 还没输出的运行中调用：行能展开、写明仍在运行与已运行多久、写出命令自带的超时
+node perf/gutterhit.mjs # 分栏拖拽手柄不压在相邻滚动条上：滚动条拇指处按下命中的不是手柄，握把仍可拖开收起的栏
+node perf/dock.mjs      # 停靠的浏览器列从 pane 顶部起、与导航行并排，取消停靠后行归还（浅/深 × 宽/窄 × 首开/重载）
+node perf/signals.mjs   # 运行分析的信号轨说明：它是什么、为什么标记不能拖（浅/深 × 宽/手机）
+node perf/narrow.mjs    # 窄窗口 + 1.8 倍缩放：标题栏与输入区的行互不重叠、不越出窗口（浅/深 × 390/320 × 1.8/1.3，另加宽窗口对照）
+node perf/sidebar.mjs   # 侧栏开关只有一个且位置不变（图标栏 开/仅收起时/关 × 浅/深）；同一模型连续回复只在首条带头
+node perf/start.mjs     # 经工作台标签/边缘把手打开工作台先出入口页（文件/改动/浏览器），不替人开浏览器；标题栏 Browser 按钮仍直达浏览器（浅/深 × 宽/窄）
 ```
 
 `lang.mjs` 从仓库外跑时用 `PERF_SRC` 指向 `src/`（它要读固件源码来决定

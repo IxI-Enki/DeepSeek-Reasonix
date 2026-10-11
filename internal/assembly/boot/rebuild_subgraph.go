@@ -243,7 +243,11 @@ func stageDispatcher(res *BuildResult) error {
 	}
 	clients := sidecarClientResolver(res.Extensions)
 	required := requiredRuntimeSet(res.Extensions)
-	res.Dispatcher = dispatch.New(res.Snapshot.InterceptorChain(), res.Snapshot.Replacements(), clients, required, dispatch.Options{})
+	var opts dispatch.Options
+	if res.Dispatcher != nil {
+		opts = res.Dispatcher.Options()
+	}
+	res.Dispatcher = dispatch.New(res.Snapshot.InterceptorChain(), res.Snapshot.Replacements(), clients, required, opts)
 	return nil
 }
 

@@ -17,6 +17,12 @@ import (
 // staged or swapped here — for a line that installs rather than publishing
 // version directories, the installer is the helper.
 func (l Line) RunInstaller(path string) error {
+	return l.runInstaller(path, windows.ShellExecute)
+}
+
+type shellExecuteFunc func(hwnd windows.Handle, verb, file, args, cwd *uint16, show int32) error
+
+func (l Line) runInstaller(path string, shellExecute shellExecuteFunc) error {
 	// "runas" raises the consent an admin-manifested installer needs, "open"
 	// starts a per-user one as the user who asked. A line that has not said
 	// which it ships must not guess — elevating the wrong one is silent.
@@ -42,8 +48,14 @@ func (l Line) RunInstaller(path string) error {
 	if err != nil {
 		return fmt.Errorf("update: start installer: %w", err)
 	}
+	var params *uint16
+	if l.Windows.InstallerArgs != "" {
+		if params, err = syscall.UTF16PtrFromString(l.Windows.InstallerArgs); err != nil {
+			return fmt.Errorf("update: start installer: %w", err)
+		}
+	}
 	// ShellExecute detaches on its own, so what it starts outlives this process.
-	if err := windows.ShellExecute(0, verbPtr, target, nil, nil, windows.SW_SHOWNORMAL); err != nil {
+	if err := shellExecute(0, verbPtr, target, params, nil, windows.SW_SHOWNORMAL); err != nil {
 		return runInstallerStartError(err)
 	}
 	return nil

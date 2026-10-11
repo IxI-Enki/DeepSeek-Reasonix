@@ -22,7 +22,7 @@ function tookWidth(ms: number) {
 // counts on the window's own clock from the moment the window saw the call
 // running, and says nothing about a call that was already running when it
 // arrived, because that is a duration this window does not know.
-function useWatched(running: boolean): number {
+export function useWatched(running: boolean): number {
   const from = useRef(0);
   const [now, setNow] = useState(0);
   useEffect(() => {

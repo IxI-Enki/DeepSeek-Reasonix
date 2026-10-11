@@ -8,14 +8,14 @@ import (
 	"reasonix/internal/base/secrets"
 )
 
-func TestInstallResultClassifiesStatusByIdentity(t *testing.T) {
+func TestInstallResultReadsStatusWithoutPromotingIt(t *testing.T) {
 	for _, tc := range []struct {
 		status int
 		state  string
 		action string
 	}{
-		{401, "action_required", "authenticate"},
-		{403, "action_required", "authenticate"},
+		{401, "issue", "retry"},
+		{403, "issue", "retry"},
 		{500, "issue", "retry"},
 	} {
 		err := secrets.DiagnosticError(fmt.Errorf("MCP startup initialize failed: %w", &httpStatusError{Status: tc.status, BodyBytes: 12}))

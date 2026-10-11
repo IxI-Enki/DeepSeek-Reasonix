@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from "vitest";
-import { act, cleanup, configure, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import "./testkit";
 import { App } from "./App";
@@ -8,10 +8,6 @@ import { MockHub } from "../port/mock_hub";
 import type { HistoryMessage } from "../port/port";
 
 afterEach(cleanup);
-
-// Each case mounts the whole window over a sixty-turn transcript, which on a
-// loaded machine takes longer than the defaults allow.
-configure({ asyncUtilTimeout: 10_000 });
 
 // A conversation long enough that the transcript mounts only part of it: the
 // count has to come from the rows, not from what happens to be in the document.
@@ -51,7 +47,7 @@ const count = () => document.querySelector(".tfind .n")?.textContent ?? "";
 const chordF = (target: Element, init: Partial<KeyboardEventInit> = {}) =>
   fireEvent.keyDown(target, { key: "f", code: "KeyF", ctrlKey: true, ...init });
 
-describe("find in the conversation", { timeout: 30_000 }, () => {
+describe("find in the conversation", () => {
   it("opens from the composer, counts every row, steps both ways and closes on Escape", async () => {
     const { composer } = await openWindow();
     composer.focus();

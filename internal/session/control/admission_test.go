@@ -95,7 +95,7 @@ func TestSubmitDuringRotationEmitsNotice(t *testing.T) {
 
 	select {
 	case e := <-events:
-		if e.Kind != event.Notice || e.Level != event.LevelWarn || !strings.Contains(e.Text, "resend") {
+		if e.Kind != event.Notice || e.Level != event.LevelWarn || !strings.Contains(e.Text, "resend") || e.Code != event.NoticeCodeInputRefused {
 			t.Fatalf("event = %+v, want a warn notice asking to resend", e)
 		}
 	case <-time.After(time.Second):

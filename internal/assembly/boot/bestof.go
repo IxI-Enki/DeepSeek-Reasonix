@@ -107,7 +107,7 @@ func runUnattended(ctx context.Context, parent Options, sink event.Sink, mode, r
 		return "", "", err
 	}
 	defer ctrl.Close()
-	if err := ctrl.Run(ctx, prompt); err != nil {
+	if err := ctrl.Run(agent.WithoutRunTimeSink(ctx), prompt); err != nil {
 		var unready *agent.FinalReadinessError
 		if !errors.As(err, &unready) {
 			return "", "", err

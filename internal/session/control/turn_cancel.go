@@ -22,6 +22,7 @@ import (
 // The caller must already have claimed admission (running=true) under c.mu.
 func (c *Controller) spawnGuardedTurn(ctx context.Context, cancel context.CancelFunc, body func(ctx context.Context) error) {
 	ctx, completion := withGuardedTurnCompletion(ctx)
+	ctx = agent.WithRunTimeSink(ctx, func(ms int64) { completion.workMs.Add(ms) })
 	c.autosaveWG.Go(func() {
 		c.autosaveWhileRunning(ctx)
 	})
@@ -98,6 +99,7 @@ func (c *Controller) finishGuardedTurn(err error, completion *guardedTurnComplet
 		Cancelled:      cancelRequested && (err == nil || errors.Is(err, context.Canceled)),
 		Outcome:        turnOutcome(err),
 		CheckpointTurn: c.validatedCheckpointTurn(completion),
+		WorkDurationMs: turnWorkMs(err, cancelRequested, completion),
 		Receipt:        c.executor.CompletionReceipt(),
 		ItemID:         activeInboxID,
 	}
@@ -219,7 +221,7 @@ func (c *Controller) stripCancelledVisibleTurnMessagesAfterWithFallbackAt(idx in
 			m.Role = provider.RoleTool
 			m.ToolCallID = provider.LocalOnlyToolID
 			m.Name = provider.LocalOnlyToolName
-			m.InterruptedTurn = nil
+			transferStreamFailure(recovery, &m)
 			m.ToolCalls = displayOnlyToolCalls(m.ToolCalls)
 			next = append(next, m)
 			localIndexes = append(localIndexes, len(next)-1)
@@ -290,6 +292,13 @@ func (c *Controller) stripCancelledVisibleTurnMessagesAfterWithFallbackAt(idx in
 	}
 	next[localIndexes[len(localIndexes)-1]].InterruptedTurn = recovery
 	c.replaceSessionAfterCancel(next)
+}
+
+func transferStreamFailure(recovery *provider.InterruptedTurnRecovery, m *provider.Message) {
+	if prior := m.InterruptedTurn; prior != nil && prior.Pending && prior.StreamFailure.Description() != "" {
+		recovery.StreamFailure = prior.StreamFailure
+	}
+	m.InterruptedTurn = nil
 }
 
 func (c *Controller) hasInterruptedDisplayAfter(idx int, fallback provider.Message) bool {
@@ -640,4 +649,13 @@ func interruptedToolSummary(call provider.ToolCall) provider.InterruptedToolSumm
 		}
 	}
 	return summary
+}
+
+// turnWorkMs is the run time the turn reports: none when it failed or was
+// stopped, because a figure for work the person cut short says nothing.
+func turnWorkMs(err error, cancelled bool, completion *guardedTurnCompletion) int64 {
+	if err != nil || cancelled || completion == nil {
+		return 0
+	}
+	return completion.workMs.Load()
 }

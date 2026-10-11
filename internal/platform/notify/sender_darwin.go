@@ -29,3 +29,14 @@ func appleScriptString(s string) string {
 	s = strings.ReplaceAll(s, `\`, `\\`)
 	return strings.ReplaceAll(s, `"`, `\"`)
 }
+
+// Chime plays the system's Glass sound, independent of notification settings.
+func (PlatformSender) Chime() error {
+	cmd := exec.Command("afplay", "/System/Library/Sounds/Glass.aiff")
+	cmd.Env = secrets.ProcessEnv()
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+	go func() { _ = cmd.Wait() }()
+	return nil
+}

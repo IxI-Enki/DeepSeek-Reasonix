@@ -365,14 +365,14 @@ func TestThinkingHintNamesTheInterruptKeyPerMode(t *testing.T) {
 	plain, _ := testModel(t)
 	apply(plain, eventwire.Event{Kind: "turn_started"})
 	plain.runSince = time.Now()
-	if got, want := ansi.Strip(plain.workingLine()), fmt.Sprintf("  "+i18n.M.ChatStatusThinkingFmt, frame, 0, "Esc"); got != want {
+	if got, want := ansi.Strip(plain.workingLine()), fmt.Sprintf("  "+i18n.M.ChatStatusThinkingFmt, frame, "0s", "Esc"); got != want {
 		t.Fatalf("default thinking line = %q, want %q", got, want)
 	}
 
 	vi, _ := newViModel(t)
 	apply(vi, eventwire.Event{Kind: "turn_started"})
 	vi.runSince = time.Now()
-	if got, want := ansi.Strip(vi.workingLine()), fmt.Sprintf("  "+i18n.M.ChatStatusThinkingFmt, frame, 0, "Ctrl+C"); got != want {
+	if got, want := ansi.Strip(vi.workingLine()), fmt.Sprintf("  "+i18n.M.ChatStatusThinkingFmt, frame, "0s", "Ctrl+C"); got != want {
 		t.Fatalf("vi thinking line = %q, want %q", got, want)
 	}
 }
@@ -386,14 +386,14 @@ func TestCancellingHintOmitsExitKeyInViMode(t *testing.T) {
 	vi, _ := newViModel(t)
 	apply(vi, eventwire.Event{Kind: "turn_started"})
 	vi.cancelling, vi.runSince = true, time.Now()
-	if got, want := ansi.Strip(vi.workingLine()), fmt.Sprintf("  "+i18n.M.ChatStatusCancellingViFmt, frame, 0); got != want {
+	if got, want := ansi.Strip(vi.workingLine()), fmt.Sprintf("  "+i18n.M.ChatStatusCancellingViFmt, frame, "0s"); got != want {
 		t.Fatalf("vi cancelling line = %q, want %q", got, want)
 	}
 
 	plain, _ := testModel(t)
 	apply(plain, eventwire.Event{Kind: "turn_started"})
 	plain.cancelling, plain.runSince = true, time.Now()
-	if got, want := ansi.Strip(plain.workingLine()), fmt.Sprintf("  "+i18n.M.ChatStatusCancellingFmt, frame, 0); got != want {
+	if got, want := ansi.Strip(plain.workingLine()), fmt.Sprintf("  "+i18n.M.ChatStatusCancellingFmt, frame, "0s"); got != want {
 		t.Fatalf("non-vi cancelling line = %q, want %q", got, want)
 	}
 }

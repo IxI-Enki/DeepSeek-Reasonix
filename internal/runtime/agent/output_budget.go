@@ -12,6 +12,13 @@ import (
 
 const outputBudgetReserve = 8 * 1024
 
+// outputBudgetReserveFor is the margin kept between the estimated prompt and the
+// window. The estimate is our own arithmetic, so its error grows with the prompt:
+// a fixed margin that covers a 200K window leaves a 1M one to a 400 every turn.
+func outputBudgetReserveFor(window int) int {
+	return max(outputBudgetReserve, window/32)
+}
+
 type outputBudgetState struct {
 	outputBudget int
 	// lastUsage caches the latest provider telemetry for per-turn readouts.
@@ -289,7 +296,7 @@ func (a *contextWindow) effectiveOutputBudget(req provider.Request) (int, bool, 
 		return 0, false, nil
 	}
 	est := a.estimatedRequestTokens(req)
-	available := window - est - outputBudgetReserve
+	available := window - est - outputBudgetReserveFor(window)
 	if available <= 0 {
 		return 0, false, fmt.Errorf("%w: estimated prompt %d leaves no shared-window output budget", ErrCompactionRequired, est)
 	}

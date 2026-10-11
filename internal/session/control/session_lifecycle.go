@@ -15,6 +15,8 @@ import (
 	"reasonix/internal/platform/browser"
 	"reasonix/internal/runtime/guardian"
 	"reasonix/internal/state/sessiontemp"
+	"reasonix/internal/state/workspacelease"
+	"reasonix/internal/tools/jobs"
 )
 
 // SetOnSessionRecovered installs the ownership handoff invoked before the
@@ -452,7 +454,7 @@ func (c *Controller) setSessionPath(p string, fresh bool) {
 }
 
 func (c *Controller) setActiveJobSession(sessionPath string) {
-	if c.jobs != nil {
+	if c.jobs != nil && !c.borrowsJobs() {
 		c.jobs.SetActiveSessionPath(sessionstore.BranchID(sessionPath), sessionPath)
 	}
 }
@@ -531,6 +533,33 @@ func (c *Controller) CloseAfterDestroy() {
 	c.close(true, closeJobsAsync)
 }
 
+// CloseHandingOffJobs closes a controller whose replacement adopted its job
+// manager and workspace lease: the jobs keep running on the model they started
+// with, and the resources they use are released once they finish.
+func (c *Controller) CloseHandingOffJobs() {
+	c.close(true, closeJobsHandedOff)
+}
+
+// CloseSharingJobs closes a replacement that never went live. It bound nothing
+// on the manager and lease it adopted, so closing leaves them to the controller
+// they were borrowed from.
+func (c *Controller) CloseSharingJobs() {
+	c.close(false, closeJobsShared)
+}
+
+// JobManager is the manager a replacement adopts to keep this controller's
+// jobs running across a rebuild.
+func (c *Controller) JobManager() *jobs.Manager { return c.jobs }
+
+// WorkspaceLeaseOwner is the write-claim owner a replacement adopts with the
+// job manager, since a running job retains the claim.
+func (c *Controller) WorkspaceLeaseOwner() *workspacelease.Owner { return c.workspaceLease }
+
+// SharesJobsWith reports whether both controllers drive one job manager.
+func (c *Controller) SharesJobsWith(other *Controller) bool {
+	return c != nil && other != nil && c.jobs != nil && c.jobs == other.jobs
+}
+
 func (c *Controller) close(fireSessionEnd bool, jobsMode closeJobsMode) {
 	// Desktop tab lifecycles can race a rebind/model-switch/close on the same
 	// controller; make teardown idempotent so a duplicate Close cannot re-fire
@@ -555,6 +584,7 @@ func (c *Controller) close(fireSessionEnd bool, jobsMode closeJobsMode) {
 			c.gate.canceling = true
 		}
 		c.mu.Unlock()
+		c.leaveCurrencyGroup()
 		if cancel != nil {
 			// clearAll deliberately does not signal waiters. Pair it with the
 			// foreground cancellation so approval/ask waits always unblock.
@@ -569,12 +599,17 @@ func (c *Controller) close(fireSessionEnd bool, jobsMode closeJobsMode) {
 			switch jobsMode {
 			case closeJobsAsync:
 				c.jobs.CloseAsync()
+			case closeJobsHandedOff, closeJobsShared:
 			default:
 				c.jobs.Close() // cancel any still-running background jobs
 			}
 		}
 		if c.cleanup != nil {
-			c.cleanup()
+			if jobsMode == closeJobsHandedOff && c.jobs != nil {
+				c.jobs.AfterUnfinished(c.cleanup)
+			} else {
+				c.cleanup()
+			}
 		}
 		// Drop the Controller owner reference last so background job leases
 		// that outlive close still pin retired generations until they exit.
@@ -591,7 +626,6 @@ func (c *Controller) close(fireSessionEnd bool, jobsMode closeJobsMode) {
 // generation — the private temporary directory and the browser — reusing what a
 // hot rebuild hands over, so ReleaseResources/Close never race a replacement.
 func (c *Controller) adoptSessionResources(opts Options) {
-	c.workspaceLease.SetSessionID(func() string { return sessionstore.BranchID(c.SessionPath()) })
 	c.sessionTemp = opts.SessionTemp
 	if c.sessionTemp == nil {
 		c.sessionTemp = sessiontemp.New()

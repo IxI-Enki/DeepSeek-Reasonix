@@ -146,6 +146,16 @@ describe("a coded notice with a payload", () => {
   });
 });
 
+describe("a refused-input notice", () => {
+  it("says the message is queued rather than asking to resend it", () => {
+    const box = draw({ level: "warn", code: "input_refused", detail: undefined, text: "input was not accepted: the session is being switched — please resend" });
+    const said = box.querySelector(".find .t")?.textContent ?? "";
+    expect(said).toBe(t("会话、工作区或运行时正在切换，这条消息没能立刻发出；它已排入队列，切换结束后会自动发送，不需要重发"));
+    expect(said).not.toContain("resend");
+    expect(box.querySelector(".find .why")).toBeNull();
+  });
+});
+
 describe("a /compact notice", () => {
   it("words a failure from its code in the reader's language and keeps the kernel English out", () => {
     const box = draw({
@@ -229,5 +239,18 @@ describe("a background job notice", () => {
   it("keeps the text of a stored notice with no code, or an unreadable payload", () => {
     expect(text({ code: undefined, text: "background bash finished: bash-126", detail: undefined })).toBe("background bash finished: bash-126");
     expect(text({ code: "job_finished", text: "background bash finished: bash-1", detail: "not json" })).toBe("background bash finished: bash-1");
+  });
+
+  it("words a failed job from its typed exit, not from the raw error text", () => {
+    const detail = (extra: object) => JSON.stringify({ kind: "bash", id: "bash-9", label: "make", error: "exit status 2", ...extra });
+    const exit = draw({ code: "job_failed", text: "english", detail: detail({ exitCode: 2 }) });
+    expect(exit.querySelector(".nwhy")?.textContent).toBe(t("退出码 {code}", { code: 2 }));
+    expect(exit.textContent).not.toContain("exit status");
+    cleanup();
+    const signaled = draw({ code: "job_failed", text: "english", detail: detail({ exitCode: -1, signal: 9 }) });
+    expect(signaled.querySelector(".nwhy")?.textContent).toBe(t("被信号 {signal} 终止", { signal: 9 }));
+    cleanup();
+    const untyped = draw({ code: "job_failed", text: "english", detail: detail({}) });
+    expect(untyped.querySelector(".nwhy")?.textContent).toBe("exit status 2");
   });
 });

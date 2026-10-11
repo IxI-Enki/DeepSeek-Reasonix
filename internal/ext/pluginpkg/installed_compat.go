@@ -8,7 +8,23 @@ import (
 	"sort"
 	"strings"
 	"sync"
+
+	"reasonix/internal/base/textutil"
 )
+
+func migratedWarning(name string) string {
+	return fmt.Sprintf("%s: automatically migrated managed manifest to %s (backup: %s.bak)", textutil.ShownIdentity(name), ManifestAPIVersionV2, NativeManifest)
+}
+
+func migrateRemediation(name string) string {
+	return fmt.Sprintf("reasonix plugin migrate %s --to-v2", textutil.ShownIdentity(name))
+}
+
+// incompatibleWarning writes the whole sentence first and shows the error as a
+// literal: its text can come from the package's own manifest.
+func incompatibleWarning(name string, err error, remediation string) string {
+	return fmt.Sprintf("%s: %s: %s; remediation: %s", textutil.ShownIdentity(name), PluginStatusDisabledIncompatible, textutil.ShownLocator(err.Error()), remediation)
+}
 
 // LoadInstalled reads one snapshot of the state file and parses the enabled
 // packages from it with no lock held, so a slow disk stalls only this caller.
@@ -34,7 +50,7 @@ func LoadInstalled(reasonixHome string) ([]InstalledPackage, []string) {
 			var migrated bool
 			pkg, pkgWarnings, migrated, err = migrateManagedManifest(root)
 			if migrated {
-				warnings = append(warnings, fmt.Sprintf("%s: automatically migrated managed manifest to %s (backup: %s.bak)", installed.Name, ManifestAPIVersionV2, NativeManifest))
+				warnings = append(warnings, migratedWarning(installed.Name))
 			}
 		}
 		if err != nil {
@@ -44,9 +60,9 @@ func LoadInstalled(reasonixHome string) ([]InstalledPackage, []string) {
 			}
 			remediation := "repair or reinstall the plugin"
 			if errors.Is(err, ErrMissingAPIVersion) {
-				remediation = fmt.Sprintf("reasonix plugin migrate %s --to-v2", installed.Name)
+				remediation = migrateRemediation(installed.Name)
 			}
-			warnings = append(warnings, fmt.Sprintf("%s: %s: %v; remediation: %s", installed.Name, PluginStatusDisabledIncompatible, err, remediation))
+			warnings = append(warnings, incompatibleWarning(installed.Name, err, remediation))
 			continue
 		}
 		if installed.Status != "" || installed.StatusReason != "" {
@@ -55,7 +71,7 @@ func LoadInstalled(reasonixHome string) ([]InstalledPackage, []string) {
 		out = append(out, InstalledPackage{Installed: installed, Package: pkg, Warnings: pkgWarnings})
 	}
 	if err := persistStatusVerdicts(reasonixHome, verdicts); err != nil {
-		warnings = append(warnings, "persist plugin compatibility status: "+err.Error())
+		warnings = append(warnings, "persist plugin compatibility status: "+textutil.ShownLocator(err.Error()))
 	}
 	sort.SliceStable(out, func(i, j int) bool { return out[i].Installed.Name < out[j].Installed.Name })
 	return out, warnings

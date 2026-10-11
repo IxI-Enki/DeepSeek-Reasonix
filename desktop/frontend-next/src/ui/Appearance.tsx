@@ -13,6 +13,7 @@ import { Notifications } from "./Notifications";
 import { Folding } from "./Folding";
 import { WindowSection } from "./WindowSection";
 import { NavRailSection } from "./NavRailSection";
+import { GraphicsSection } from "./GraphicsSection";
 import { ThemeImport } from "./ThemeImport";
 import { useThemeInventory } from "./useThemeInventory";
 
@@ -62,6 +63,7 @@ const WEIGHTS: [string, string, string][] = [
 const MEASURES: [string, string, string][] = [
   ["standard", "适宜阅读", "每行长度控制在一眼能回到行首的范围"],
   ["full", "铺满窗口", "正文跟随窗口宽度，宽屏上不留两侧空白"],
+  ["full-all", "连输入框一起铺满", "正文和输入框都跟随窗口宽度；输入框很宽时一行不易回到行首"],
 ];
 
 const EFFECTS: [EffectsMode, string, string][] = [
@@ -150,7 +152,7 @@ export function Appearance({ port, theme, onTheme, contrast, onContrast, weight,
   const set = useCallback((patch: Partial<Look>) => onLook({ ...look, ...patch }), [look, onLook]);
   // Until the kernel has announced its range there is nothing to draw the
   // slider from; it is held inert rather than given a range of its own.
-  const zoomRange = look.zoomRange ?? { min: 0, max: 1, step: 1 };
+  const zoomRange = look.zoomRange ?? { min: 0, max: 2, step: 1 };
   const setPaper = useCallback(
     (patch: Partial<NonNullable<Look["wallpaper"]>>) =>
       look.wallpaper && onLook({ ...look, wallpaper: { ...look.wallpaper, ...patch } }),
@@ -525,6 +527,7 @@ export function Appearance({ port, theme, onTheme, contrast, onContrast, weight,
 
       <WindowSection port={port} />
       <NavRailSection />
+      <GraphicsSection />
       <Folding />
       <Notifications port={port} />
 

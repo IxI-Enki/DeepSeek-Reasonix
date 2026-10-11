@@ -34,6 +34,9 @@ type Options struct {
 	Inline bool
 	// HideTurnUsage keeps each request's token and cost receipt off the transcript.
 	HideTurnUsage bool
+	// ShowReceipt draws each turn's delivery receipt as a card; off, a turn that
+	// left something unproven gets one line.
+	ShowReceipt bool
 	// AutoSubmit commits a multi-question ask once its last question is
 	// answered, instead of showing the Submit tab.
 	AutoSubmit bool
@@ -185,6 +188,7 @@ func newModel(ctx context.Context, opts Options) *model {
 	}
 	termrender.SetCells(ansi.WcWidth)
 	m.verbose = storedVerbose()
+	m.tr.ReceiptLine = !opts.ShowReceipt
 	if !opts.Inline {
 		m.scr = &screen{follow: true, mouseOff: mouseCaptureOffByDefault()}
 	}

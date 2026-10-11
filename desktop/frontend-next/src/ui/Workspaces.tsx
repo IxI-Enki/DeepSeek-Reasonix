@@ -1,3 +1,4 @@
+import { inScope } from "./sessionScope";
 import { Fragment, type ReactNode, memo, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { t } from "../i18n";
@@ -20,6 +21,7 @@ import { WorkspaceOrder, workspaceMenuKeys } from "./WorkspaceOrder";
 import { WorkspaceReveal } from "./WorkspaceReveal";
 import { Confirm, removeHint } from "./WorkspaceConfirm";
 import { UnreadCount, UnreadDot } from "./UnreadMark";
+import { NO_PAGING, atCap, sessionCount, unloaded, type TreePaging } from "./treewindow";
 
 const parentOf = (root: string) => root.replace(/[/\\]+$/, "").split(/[/\\]/).slice(-2, -1)[0] ?? "";
 
@@ -35,6 +37,7 @@ interface Props {
   folded: Set<string>;
   onFold: (root: string, folded: boolean) => void;
   reload: () => Promise<void>;
+  paging?: TreePaging;
   // The session path being opened, or empty. The row shows it selected and busy
   // before the kernel answers; the owner clears it on failure.
   opening?: string;
@@ -60,18 +63,15 @@ interface Props {
   children?: ReactNode;
 }
 
-// How many of a folder's sessions get a row before the rest are summarised.
-// The list is newest-first, so this is the recent end. A machine that has been
-// worked on for months holds thousands of these, and drawing them all put 98k
-// nodes in the sidebar — more than the transcript at 20000 turns.
-const SHOWN = 30;
-
 // A conversation a pane holds before its first turn is written has only a file
 // name; calling it that would show a timestamp where every other row shows words.
+const countLabel = (c: { shown: number; of?: number }) =>
+  c.of === undefined ? t("{n} 会话", { n: c.shown }) : t("{n} / {total} 会话", { n: c.shown, total: c.of });
+
 const rowLabel = (session: TreeSession) =>
   session.title || (session.runtimeId && !session.turns ? t("新会话") : session.name);
 
-function WorkspacesView({ hub, tree, treeRead, runtimes, active, folded, reload, onFold, opening = "", onOpen, onFocus, onClose, liveIds, runs, scope = "all", pinned = new Set(), onPin = () => {}, onPause = () => {}, onArchive = async () => {}, onRename, onError, adder, children }: Props) {
+function WorkspacesView({ hub, tree, treeRead, runtimes, active, folded, reload, paging = NO_PAGING, onFold, opening = "", onOpen, onFocus, onClose, liveIds, runs, scope = "all", pinned = new Set(), onPin = () => {}, onPause = () => {}, onArchive = async () => {}, onRename, onError, adder, children }: Props) {
   const [busy, setBusy] = useState("");
   // Folding a machine is the reader's own preference, held the way a host row
   // holds it.
@@ -134,8 +134,17 @@ function WorkspacesView({ hub, tree, treeRead, runtimes, active, folded, reload,
     renamed.current[session.path] = next;
     onRename(session.path, next);
   };
-  // Folders the reader asked to see in full.
-  const [whole, setWhole] = useState<Set<string>>(new Set());
+  // Folders whose next page is being read, or could not be.
+  const [paged, setPaged] = useState<Record<string, "loading" | "failed">>({});
+  const more = async (root: string) => {
+    setPaged((prev) => ({ ...prev, [root]: "loading" }));
+    try {
+      await paging.more(root);
+      setPaged(({ [root]: _, ...rest }) => rest);
+    } catch {
+      setPaged((prev) => ({ ...prev, [root]: "failed" }));
+    }
+  };
   // Conversations whose conflict copies the reader asked to see.
   const [spread, setSpread] = useState<Set<string>>(new Set());
   // Two folders can share a name — a worktree copy carries the project's own.
@@ -273,18 +282,29 @@ function WorkspacesView({ hub, tree, treeRead, runtimes, active, folded, reload,
   const shownTree = searchedTree
     .map((ws) => ({
       ...ws,
-      sessions: ws.sessions.filter((session) => {
-        if (scope === "archived") return !!session.archived;
-        if (session.archived) return false;
-        if (scope === "live") return !!session.runtimeId && liveIds([session.runtimeId]).length > 0;
-        if (scope === "pinned") return pinned.has(session.path);
-        return true;
-      }),
+      sessions: ws.sessions.filter((session) =>
+        inScope(session, scope, !!needle, !!session.runtimeId && liveIds([session.runtimeId]).length > 0, pinned.has(session.path))),
     }))
     .filter((ws) => scope === "all" || ws.sessions.length > 0);
   // A fold is a resting-state preference: while a word is being typed it would
   // hide the very rows that word just found.
   const shutHere = needle ? false : hereShut;
+  const searching = !!needle;
+  const loadedRows = (root: string) => tree.find((x) => x.root === root)?.sessions.length ?? 0;
+  // What the kernel is asked to count: the archived rows when that is the view,
+  // otherwise the active ones, and everything while a word is being searched
+  // for, since a search is allowed to find an archived conversation.
+  const kernelScope = scope === "archived" ? "archived" : searching ? "" : "active";
+  const [asked, setAsked] = useState(needle);
+  useEffect(() => {
+    if (!needle) return setAsked("");
+    const wait = setTimeout(() => setAsked(needle), 250);
+    return () => clearTimeout(wait);
+  }, [needle]);
+  useEffect(() => {
+    paging.view({ scope: kernelScope, q: asked });
+  }, [paging, kernelScope, asked]);
+  const pagedScope = scope === "all" || scope === "archived";
 
   return (
     <>
@@ -365,7 +385,7 @@ function WorkspacesView({ hub, tree, treeRead, runtimes, active, folded, reload,
                       {(ws.isolated || twice.has(ws.name)) && (
                         <em className="wstag">{ws.isolated ? t("隔离") : parentOf(ws.root)}</em>
                       )}
-                      {t("{n} 会话", { n: ws.sessions.length })}
+                      {countLabel(pagedScope ? sessionCount(ws, ws.sessions.length) : { shown: ws.sessions.length })}
                     </span>
                     <span className="wsacts">
                       {shut && <UnreadCount n={ws.sessions.filter((x) => x.unread).length} />}
@@ -431,7 +451,7 @@ function WorkspacesView({ hub, tree, treeRead, runtimes, active, folded, reload,
                     两级差 18px，扫一眼只读得出“有点错位”。 */}
                 {!shut && (
                   <div className="kids">
-                {(whole.has(ws.root) ? ws.sessions : ws.sessions.slice(0, SHOWN)).map((session) => {
+                {ws.sessions.map((session) => {
                     const on = opening ? session.path === opening : session.runtimeId === active;
                     const run = session.runtimeId ? runs[session.runtimeId]?.run : undefined;
                     if (confirm === session.path) {
@@ -521,7 +541,7 @@ function WorkspacesView({ hub, tree, treeRead, runtimes, active, folded, reload,
                             }}
                           />
                         ) : (
-                          <span className="sesstitle" title={rowLabel(session)}><span>{rowLabel(session)}</span></span>
+                          <span className="sesstitle" title={rowLabel(session)}><span>{rowLabel(session)}</span>{session.archived && <em className="sessarch">{t("已归档")}</em>}</span>
                         )}
                         {session.unread && <UnreadDot kind="row" />}
                         {kept.length > 0 && (
@@ -675,13 +695,23 @@ function WorkspacesView({ hub, tree, treeRead, runtimes, active, folded, reload,
                     );
                   })}
 
-                {!whole.has(ws.root) && ws.sessions.length > SHOWN && (
-                  <button
-                    className="sessmore"
-                    onClick={() => setWhole((prev) => new Set(prev).add(ws.root))}
-                  >
-                    {t("还有 {n} 个 · 全部显示", { n: ws.sessions.length - SHOWN })}
-                  </button>
+                {pagedScope && unloaded(ws, loadedRows(ws.root)) > 0 && (
+                  atCap(loadedRows(ws.root)) ? (
+                    <small className="sessnote">{t("还有 {n} 个较早的会话 · 用搜索查找", { n: unloaded(ws, loadedRows(ws.root)) })}</small>
+                  ) : (
+                    <button
+                      className="sessmore"
+                      disabled={paged[ws.root] === "loading"}
+                      data-action="session.more"
+                      onClick={() => void more(ws.root)}
+                    >
+                      {paged[ws.root] === "loading"
+                        ? t("正在加载…")
+                        : paged[ws.root] === "failed"
+                          ? t("加载失败 · 重试")
+                          : t("显示更多（还有 {n} 个）", { n: unloaded(ws, loadedRows(ws.root)) })}
+                    </button>
+                  )
                 )}
                   </div>
                 )}

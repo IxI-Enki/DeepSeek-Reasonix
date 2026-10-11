@@ -5,9 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
-	"runtime"
 	"strings"
 
 	"reasonix/internal/contract/config"
@@ -313,7 +310,7 @@ func (c *Controller) ask(ctx context.Context, questions []event.AskQuestion, ori
 	// A question blocks the run on the user exactly like an approval prompt.
 	go c.hooks.Notification(ctx, askNotificationText(questions, origin), "question_prompt")
 
-	waitCtx, cancelWait := c.approval.waitContext(ctx)
+	waitCtx, cancelWait := c.askWaitContext(ctx, origin)
 	defer cancelWait()
 
 	select {
@@ -321,9 +318,7 @@ func (c *Controller) ask(ctx context.Context, questions []event.AskQuestion, ori
 		c.closeBarrier(id, barrierResolved)
 		return ans, nil
 	case <-waitCtx.Done():
-		c.approval.cancelAsk(id)
-		c.closeBarrier(id, barrierCancelled)
-		return nil, waitCtx.Err()
+		return c.endUnansweredAsk(waitCtx, id, reply)
 	}
 }
 
@@ -349,12 +344,12 @@ func (c *Controller) AnswerQuestionFrom(id string, answers []event.AskAnswer, vi
 				return
 			}
 		}
-		c.recordAskDecisionReceipt(id, pending, answers, via)
+		c.recordAskDecisionReceipt(id, pending, answers, "answered", via)
 		pending.reply <- answers // buffered, never blocks
 	}
 }
 
-func (c *Controller) recordAskDecisionReceipt(id string, pending pendingAsk, answers []event.AskAnswer, via *provider.Via) {
+func (c *Controller) recordAskDecisionReceipt(id string, pending pendingAsk, answers []event.AskAnswer, outcome string, via *provider.Via) {
 	if c == nil || c.executor == nil {
 		return
 	}
@@ -377,7 +372,7 @@ func (c *Controller) recordAskDecisionReceipt(id string, pending pendingAsk, ans
 		}
 		parts = append(parts, prompt+": "+answer)
 	}
-	subject, outcome := clipUTF8(strings.Join(parts, " · "), 240), "answered"
+	subject := clipUTF8(strings.Join(parts, " · "), 240)
 	if pending.origin != nil {
 		subject, outcome = formReceipt(pending.origin, pending.questions, answers)
 	}
@@ -682,57 +677,12 @@ func (c *Controller) DefaultApprovalMode() string {
 
 // TrustableFolder leaves out the folders nobody should grant wholesale: a
 // filesystem root, a home directory or anything holding one, and Reasonix's own
-// home and state, whose files decide what the agent may do. It judges the
-// folder symlinks resolve to, so a link cannot stand in for any of them.
+// storage and the directories that hold keys and credentials, whose files decide
+// what the agent may do. config.Roots.FolderGrantRefusal is the one judgement;
+// extra workspace roots read it too.
 func TrustableFolder(root string) bool {
-	root = strings.TrimSpace(root)
-	if root == "" {
-		return false
-	}
-	root = resolvedDir(root)
-	if root == "." || filepath.Dir(root) == root {
-		return false
-	}
-	if home, err := os.UserHomeDir(); err == nil && home != "" && dirWithin(root, resolvedDir(home)) {
-		return false
-	}
-	for _, id := range []config.RootID{config.RootHome, config.RootState} {
-		if dir := config.RootDir(id); dir != "" {
-			if d := resolvedDir(dir); dirWithin(d, root) || dirWithin(root, d) {
-				return false
-			}
-		}
-	}
-	return true
-}
-
-// resolvedDir resolves symlinks through the deepest part of p that exists, so
-// a folder not yet created compares against the same spelling as its parent.
-func resolvedDir(p string) string {
-	if abs, err := filepath.Abs(p); err == nil {
-		p = abs
-	}
-	p = filepath.Clean(p)
-	rest := ""
-	for dir := p; ; dir = filepath.Dir(dir) {
-		if r, err := filepath.EvalSymlinks(dir); err == nil {
-			return filepath.Join(r, rest)
-		}
-		if filepath.Dir(dir) == dir {
-			return p
-		}
-		rest = filepath.Join(filepath.Base(dir), rest)
-	}
-}
-
-// dirWithin reports whether p is root or lies under it, comparing case-blind
-// where the filesystem usually is.
-func dirWithin(root, p string) bool {
-	if runtime.GOOS == "windows" || runtime.GOOS == "darwin" {
-		root, p = strings.ToLower(root), strings.ToLower(p)
-	}
-	rel, err := filepath.Rel(root, p)
-	return err == nil && (rel == "." || filepath.IsLocal(rel))
+	_, refused := config.RootsForHome("").FolderGrantRefusal(root)
+	return !refused
 }
 
 // WorkspaceTrust is the person's recorded decision about this workspace; an

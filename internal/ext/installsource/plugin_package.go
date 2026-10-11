@@ -193,7 +193,7 @@ func (t *Tool) planClaudeMarketplace(ctx context.Context, req request, src githu
 			if err != nil {
 				var unsupported *unsupportedMarketplaceObject
 				if selected == "" && errors.As(err, &unsupported) {
-					warnings = append(warnings, fmt.Sprintf("skipped Claude marketplace plugin %q: %s", entryName, unsupported.warning))
+					warnings = append(warnings, skippedMarketplaceWarning(entryName, unsupported.warning))
 					continue
 				}
 				return nil, warnings, fmt.Errorf("marketplace plugin %q: %w", entryName, err)
@@ -428,6 +428,13 @@ func (t *Tool) applyInstallPluginPackage(ctx context.Context, req request, act *
 			return newErr(ErrApprovalDenied, "plugin source changed since the approved plan (approved commit %s, found %s) and the approved snapshot could not be restored: %v; re-run without apply to review the new plan", act.Commit, commit, err)
 		}
 	}
+	if act.Mode == "copy" {
+		var err error
+		sourceRoot, err = act.copySource(sourceRoot)
+		if err != nil {
+			return err
+		}
+	}
 	if act.Mode == "link" {
 		resolved, err := filepath.EvalSymlinks(sourceRoot)
 		if err != nil {
@@ -457,7 +464,7 @@ func (t *Tool) applyInstallPluginPackage(ctx context.Context, req request, act *
 			return err
 		}
 	} else {
-		if err := installCopiedPlugin(pkg, sourceRoot, target, req.Replace); err != nil {
+		if err := installCopiedPlugin(pkg, sourceRoot, target, req.Replace, act.resolvedSource); err != nil {
 			return err
 		}
 	}
@@ -639,7 +646,7 @@ func pluginGitCommand(ctx context.Context, args ...string) *exec.Cmd {
 // Any failure before the swap — copy error, capability mismatch — leaves an
 // existing installation completely intact, so a bad update can never destroy
 // the working version it was meant to replace.
-func installCopiedPlugin(pkg pluginpkg.Package, sourceRoot, target string, replace bool) error {
+func installCopiedPlugin(pkg pluginpkg.Package, sourceRoot, target string, replace bool, approvedRoot string) error {
 	if _, err := os.Lstat(target); err == nil && !replace {
 		return newErr(ErrAlreadyExists, "plugin package already exists at %s; retry with replace=true to update it", target)
 	}
@@ -651,7 +658,7 @@ func installCopiedPlugin(pkg pluginpkg.Package, sourceRoot, target string, repla
 		return err
 	}
 	defer os.RemoveAll(staging)
-	if err := copyDir(sourceRoot, staging, tarballTotalLimit); err != nil {
+	if err := copyDir(sourceRoot, staging, tarballTotalLimit, approvedRoot); err != nil {
 		return err
 	}
 	// Fail closed when the copied tree resolves to a different capability set
@@ -754,4 +761,10 @@ func removePluginSymlink(target, source string) error {
 		return nil
 	}
 	return os.Remove(target)
+}
+
+// skippedMarketplaceWarning keeps the sentence whole and shows the reason as a
+// literal: it can carry text from the marketplace's own source.
+func skippedMarketplaceWarning(entry, reason string) string {
+	return fmt.Sprintf("skipped Claude marketplace plugin %q: %s", entry, hostLiteral(reason))
 }

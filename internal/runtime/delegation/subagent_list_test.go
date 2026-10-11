@@ -93,7 +93,7 @@ func TestSubagentListingReportsStateAndRetrievalRoute(t *testing.T) {
 			Capsule: sessionstore.ContextCapsule{Inherited: sessionstore.InheritedContext{UpstreamFrom: []string{"research"}}}}},
 	}
 
-	all := formatSubagentListing(artifacts, "")
+	all := formatSubagentListing(artifacts, "", now.Add(90*time.Second), nil)
 	for _, want := range []string{
 		"sa_one", "status=completed", "name=research", "from=call_a/fleet-1",
 		"sa_two", "status=interrupted", "started-from=upstream",
@@ -108,12 +108,37 @@ func TestSubagentListingReportsStateAndRetrievalRoute(t *testing.T) {
 		t.Errorf("upstream marker must name exactly the fed child:\n%s", all)
 	}
 
-	completed := formatSubagentListing(artifacts, sessionstore.SubagentCompleted)
+	completed := formatSubagentListing(artifacts, sessionstore.SubagentCompleted, now, nil)
 	if strings.Contains(completed, "sa_two") {
 		t.Errorf("status filter leaked a non-matching child:\n%s", completed)
 	}
-	if empty := formatSubagentListing(artifacts, sessionstore.SubagentRunning); !strings.Contains(empty, "no persisted sub-agents") {
+	if empty := formatSubagentListing(artifacts, sessionstore.SubagentRunning, now, nil); !strings.Contains(empty, "no persisted sub-agents") {
 		t.Errorf("an empty filter result must say so plainly: %s", empty)
+	}
+}
+
+func TestSubagentListingReportsHowLongARunningChildHasRun(t *testing.T) {
+	start := time.Unix(1_700_000_000, 0).UTC()
+	artifacts := []sessionstore.SubagentArtifact{
+		{Ref: "sa_live", Meta: sessionstore.SubagentMeta{Status: sessionstore.SubagentRunning, Name: "scan", CreatedAt: start, UpdatedAt: start}},
+		{Ref: "sa_done", Meta: sessionstore.SubagentMeta{Status: sessionstore.SubagentCompleted, Name: "scan", CreatedAt: start, UpdatedAt: start}},
+	}
+	got := formatSubagentListing(artifacts, "", start.Add(95*time.Second), func(ref string) bool { return ref == "sa_live" })
+	live, done, _ := strings.Cut(got, "sa_done")
+	if !strings.Contains(live, "started=2023-11-14T22:13:20Z") || !strings.Contains(live, "elapsed=1m35s") {
+		t.Errorf("running child lacks start and elapsed:\n%s", got)
+	}
+	if strings.Contains(done, "elapsed=") {
+		t.Errorf("a finished child reported an elapsed time that keeps growing:\n%s", got)
+	}
+}
+
+func TestSubagentListingDoesNotGrowElapsedForACrashLeftover(t *testing.T) {
+	start := time.Unix(1_700_000_000, 0).UTC()
+	artifacts := []sessionstore.SubagentArtifact{{Ref: "sa_stale", Meta: sessionstore.SubagentMeta{Status: sessionstore.SubagentRunning, Name: "scan", CreatedAt: start, UpdatedAt: start}}}
+	got := formatSubagentListing(artifacts, "", start.Add(48*time.Hour), func(string) bool { return false })
+	if strings.Contains(got, "elapsed=") || !strings.Contains(got, "started=") {
+		t.Errorf("a record no live run holds reported an elapsed time:\n%s", got)
 	}
 }
 

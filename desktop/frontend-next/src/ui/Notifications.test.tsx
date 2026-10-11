@@ -7,7 +7,7 @@ import type { AgentPort, NotifyPrefs } from "../port/port";
 
 afterEach(cleanup);
 
-const OWED: NotifyPrefs = { enabled: false, turnDone: true, approval: true, ask: true };
+const OWED: NotifyPrefs = { enabled: false, turnDone: true, approval: true, ask: true, feedbackReply: true, sound: false };
 
 function fakePort(answer: NotifyPrefs | null) {
   let held = answer;
@@ -31,11 +31,11 @@ describe("the notifications block", () => {
     await waitFor(() => expect(view.container.querySelector("#set-notify")).toBeNull());
   });
 
-  it("keeps the three occasions as branches of the one switch", async () => {
+  it("keeps the four occasions as branches of the one switch", async () => {
     const { view } = await box(OWED);
     await waitFor(() => expect(view.container.querySelector("#set-notify")).not.toBeNull());
     const branches = [...view.container.querySelectorAll(".lrow.subrow")];
-    expect(branches.length).toBe(3);
+    expect(branches.length).toBe(4);
     // Off, so the branches are drawn as not currently doing anything rather
     // than removed — a control that vanishes is one nobody knows exists.
     expect(branches.every((b) => b.hasAttribute("data-off"))).toBe(true);
@@ -47,5 +47,22 @@ describe("the notifications block", () => {
     (view.container.querySelector('[data-action="notify.enabled"]') as HTMLElement).click();
     await waitFor(() => expect(set).toHaveBeenCalledWith({ ...OWED, enabled: true }));
     await waitFor(() => expect(view.container.querySelector(".lrow.subrow")?.hasAttribute("data-off")).toBe(false));
+  });
+
+  it("writes the feedback switch without touching the others", async () => {
+    const { view, set } = await box({ ...OWED, enabled: true });
+    await waitFor(() => expect(view.container.querySelector('[data-action="notify.feedback-reply"]')).not.toBeNull());
+    (view.container.querySelector('[data-action="notify.feedback-reply"]') as HTMLElement).click();
+    await waitFor(() => expect(set).toHaveBeenCalledWith({ ...OWED, enabled: true, feedbackReply: false }));
+  });
+
+  it("offers the chime as a switch of its own, off by default, that wakes the branches without the toast", async () => {
+    const { view, set } = await box(OWED);
+    await waitFor(() => expect(view.container.querySelector('[data-action="notify.sound"]')).not.toBeNull());
+    expect(view.container.querySelector('[data-action="notify.sound"]')?.getAttribute("aria-checked")).toBe("false");
+    (view.container.querySelector('[data-action="notify.sound"]') as HTMLElement).click();
+    await waitFor(() => expect(set).toHaveBeenCalledWith({ ...OWED, sound: true }));
+    await waitFor(() => expect(view.container.querySelector(".lrow.subrow")?.hasAttribute("data-off")).toBe(false));
+    expect(view.container.querySelector('[data-action="notify.enabled"]')?.getAttribute("aria-checked")).toBe("false");
   });
 });

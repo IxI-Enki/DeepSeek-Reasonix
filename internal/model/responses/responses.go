@@ -20,6 +20,8 @@ import (
 	"reasonix/internal/base/netclient"
 	"reasonix/internal/contract/provider"
 	provideropenai "reasonix/internal/model/openai"
+	"reasonix/internal/safety/endpointclient"
+	"reasonix/internal/safety/redirectguard"
 )
 
 const (
@@ -141,6 +143,7 @@ type sessionHeaders struct {
 func New(cfg Config) provider.Provider {
 	vendor := DetectVendor(cfg.BaseURL)
 	cap := capabilitiesFor(vendor)
+	cap.imageDetail = provider.IsOpenAIEndpoint(cfg.BaseURL)
 	maxOutputTokens := cfg.MaxOutputTokens
 	// max_output_tokens=0 is automatic. Known vendors use the 16K/32K/64K ladder;
 	// thinking-disabled DeepSeek still gets the ordinary 16K auto budget.
@@ -163,8 +166,8 @@ func New(cfg Config) provider.Provider {
 	if vendor == "deepseek" {
 		vision = vision && provideropenai.DeepSeekTakesImages(cfg.Model)
 	}
-	httpClient := &http.Client{Timeout: 300 * time.Second}
-	if built, err := netclient.NewHTTPClient(cfg.Proxy, netclient.TransportOptions{
+	httpClient := &http.Client{Timeout: 300 * time.Second, CheckRedirect: redirectguard.StayOnOrigin()}
+	if built, err := endpointclient.New(cfg.Proxy, netclient.TransportOptions{
 		DialTimeout: 30 * time.Second, KeepAlive: 30 * time.Second,
 		TLSHandshakeTimeout: 15 * time.Second, ResponseHeaderTimeout: provider.IdleTimeoutFromExtra(cfg.Extra),
 	}); err == nil {
@@ -304,7 +307,12 @@ func (c *client) send(ctx context.Context, body map[string]any) (*http.Response,
 		provider.ApplyClientIdentity(req)
 		return req, nil
 	}
-	return provider.SendWithRetry(ctx, c.http, c.sendOpts(), newRequest)
+	resp, err := provider.SendWithRetry(ctx, c.http, c.sendOpts(), newRequest)
+	var apiErr *provider.APIError
+	if errors.As(err, &apiErr) && (apiErr.Status == http.StatusBadRequest || apiErr.Status == http.StatusUnprocessableEntity) {
+		err = provider.AnnotateRequestShape(err, requestShape(body, len(payload)))
+	}
+	return resp, err
 }
 
 // isStalePreviousResponseError reads the error object, not its prose: the
@@ -437,7 +445,7 @@ func messagesToInput(messages []provider.Message, vision, replayWebSearchItems b
 		parts := make([]map[string]string, 0, len(toolImages)+1)
 		parts = append(parts, map[string]string{"type": "input_text", "text": "Images returned by the preceding tool call(s):"})
 		for _, url := range toolImages {
-			parts = append(parts, map[string]string{"type": "input_image", "image_url": url})
+			parts = append(parts, inputImage(url, caps))
 		}
 		input = append(input, map[string]any{"role": "user", "content": parts})
 		toolImages = nil
@@ -460,7 +468,7 @@ func messagesToInput(messages []provider.Message, vision, replayWebSearchItems b
 					parts = append(parts, map[string]string{"type": "input_text", "text": message.Content})
 				}
 				for _, url := range message.Images {
-					parts = append(parts, map[string]string{"type": "input_image", "image_url": url})
+					parts = append(parts, inputImage(url, caps))
 				}
 				input = append(input, map[string]any{"role": "user", "content": parts})
 			} else {
@@ -519,6 +527,17 @@ func messagesToInput(messages []provider.Message, vision, replayWebSearchItems b
 	}
 	flushToolImages()
 	return input
+}
+
+// inputImage is an input_image part. detail is the published schema's required
+// field, sent only where the endpoint is known to take it; elsewhere the part is
+// what every other endpoint in use already accepts.
+func inputImage(url string, caps vendorCapabilities) map[string]string {
+	part := map[string]string{"type": "input_image", "image_url": url}
+	if caps.imageDetail {
+		part["detail"] = "auto"
+	}
+	return part
 }
 
 func decodeReplayableWebSearchItem(raw json.RawMessage) (map[string]any, bool) {

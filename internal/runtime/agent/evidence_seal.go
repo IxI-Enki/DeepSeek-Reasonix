@@ -29,7 +29,14 @@ type EvidenceSeal struct {
 
 // shadowBundleKind names the record kind. The bundle observes and gates
 // nothing: nothing reads it back to decide a turn.
-const shadowBundleKind = "shadow_bundle/1"
+const shadowBundleKind = "shadow_bundle/2"
+
+// legacyShadowBundleKind is the shape that carried the obligations inline.
+const legacyShadowBundleKind = "shadow_bundle/1"
+
+func isShadowBundle(kind string) bool {
+	return kind == shadowBundleKind || kind == legacyShadowBundleKind
+}
 
 // sealWait bounds how long a turn's end waits on another process holding the
 // stream's lock. Past it the turn ends unsealed and says why.
@@ -44,9 +51,32 @@ type shadowBundle struct {
 	Blocked      bool                       `json:"blocked,omitempty"`
 	Criteria     []taskcontract.Requirement `json:"criteria,omitempty"`
 	TaskContract contractState              `json:"task_contract"`
-	Verdict      verdict.Result             `json:"verdict"`
+	Verdict      bundleVerdict              `json:"verdict"`
 	Divergence   verdict.Divergence         `json:"divergence"`
 	workspaceObservation
+}
+
+// bundleVerdict keeps the outcome inline and the obligations as an object of
+// their own. The list tracks the contract's size, and an object repeats nothing
+// when a turn leaves every obligation as it was.
+type bundleVerdict struct {
+	Outcome     verdict.Outcome     `json:"outcome"`
+	Obligations trustedstate.Digest `json:"obligations,omitempty"`
+	Count       int                 `json:"obligation_count"`
+}
+
+// sealVerdict files the obligations in the store and returns the bundle's view.
+func sealVerdict(store *trustedstate.Store, res verdict.Result) (bundleVerdict, error) {
+	out := bundleVerdict{Outcome: res.Outcome, Count: len(res.Obligations)}
+	if len(res.Obligations) == 0 {
+		return out, nil
+	}
+	body, err := json.Marshal(res.Obligations)
+	if err != nil {
+		return out, err
+	}
+	out.Obligations, err = store.PutObject(body)
+	return out, err
 }
 
 type shadowContract struct {
@@ -105,6 +135,7 @@ func (a *Agent) sealShadowBundle(input string, c *taskcontract.Contract, rep com
 	if cs.Failure == "" {
 		a.turn.outcome = &res
 	}
+	sealed, putErr := sealVerdict(seal.Store, res)
 	payload, err := json.Marshal(shadowBundle{
 		Kind:         shadowBundleKind,
 		InputDigest:  sha256Hex([]byte(input)),
@@ -114,7 +145,7 @@ func (a *Agent) sealShadowBundle(input string, c *taskcontract.Contract, rep com
 		Blocked:      blocked,
 		Criteria:     c.Requirements,
 		TaskContract: cs,
-		Verdict:      res,
+		Verdict:      sealed,
 		Divergence:   div,
 
 		workspaceObservation: obs,
@@ -131,12 +162,21 @@ func (a *Agent) sealShadowBundle(input string, c *taskcontract.Contract, rep com
 		ContractDecision:   string(cs.Decision),
 		ContractFailure:    cs.Failure,
 	}
+	if putErr != nil {
+		audit.FailureCode = trustedstate.FailureCode(putErr)
+		event.RecordEvidenceBundle(a.svc.sink, audit)
+		return
+	}
 	if err != nil {
 		audit.FailureCode = "trusted_state.encode"
 		event.RecordEvidenceBundle(a.svc.sink, audit)
 		return
 	}
-	rec, digest, err := seal.Store.Append(ctx, seal.Stream, shadowBundleKind, payload)
+	var refs []trustedstate.Digest
+	if sealed.Obligations != "" {
+		refs = append(refs, sealed.Obligations)
+	}
+	rec, digest, err := seal.Store.AppendWithRefs(ctx, seal.Stream, shadowBundleKind, payload, refs)
 	if err != nil {
 		audit.FailureCode = trustedstate.FailureCode(err)
 		event.RecordEvidenceBundle(a.svc.sink, audit)

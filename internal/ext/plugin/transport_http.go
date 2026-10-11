@@ -143,7 +143,7 @@ func (t *httpTransport) call(ctx context.Context, method string, params any) (re
 				bodyBytes: len(b),
 			})
 		}
-		return nil, fmt.Errorf("plugin %q: %s: %w", t.name, method, &httpStatusError{Status: resp.StatusCode, BodyBytes: len(b), RPC: bodyRPCError(b)})
+		return nil, fmt.Errorf("plugin %q: %s: %w", t.name, method, t.statusFailure(resp, len(b), bodyRPCError(b)))
 	}
 
 	if strings.HasPrefix(resp.Header.Get("Content-Type"), "text/event-stream") {
@@ -165,7 +165,7 @@ func (t *httpTransport) notify(ctx context.Context, method string, params any) e
 	t.captureSession(resp)
 	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, maxHTTPBody))
 	if resp.StatusCode/100 != 2 {
-		return fmt.Errorf("plugin %q: %s: %w", t.name, method, &httpStatusError{Status: resp.StatusCode})
+		return fmt.Errorf("plugin %q: %s: %w", t.name, method, t.statusFailure(resp, 0, nil))
 	}
 	return nil
 }
@@ -414,7 +414,7 @@ func (t *httpTransport) replyServerRequest(ctx context.Context, message inboundM
 	t.captureSession(resp)
 	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, maxHTTPBody))
 	if resp.StatusCode/100 != 2 {
-		return fmt.Errorf("plugin %q: reply to %s: %w", t.name, message.Method, &httpStatusError{Status: resp.StatusCode})
+		return fmt.Errorf("plugin %q: reply to %s: %w", t.name, message.Method, t.statusFailure(resp, 0, nil))
 	}
 	return nil
 }

@@ -1,5 +1,5 @@
 import { SseBoundary } from "./sse_boundary";
-import type { Protocol, ProviderCheck, ProviderDraft, ProviderEdit, ProviderEntry, ProviderModelCheck, ProviderModelCheckRequest, ProviderProbe } from "./port";
+import type { Protocol, ProviderCheck, ProviderDraft, ProviderEdit, ProviderEntry, ProviderModelCheck, ProviderModelCheckRequest, ProviderProbe, ProviderRemoval, ProviderPreset, ProviderPresetInstall } from "./port";
 
 // Where models come from: the accounts, the protocols their endpoints answer,
 // and what probing one found.
@@ -9,6 +9,14 @@ export class SseProvider extends SseBoundary {
   }
   protocols() {
     return this.get<Protocol[]>("/providers/protocols");
+  }
+
+  providerPresets() {
+    return this.get<ProviderPreset[]>("/providers/presets");
+  }
+
+  installProviderPreset(req: ProviderPresetInstall) {
+    return this.post0<{ names: string[] }>("/providers/presets/install", req);
   }
 
   // A refused key, a path the endpoint does not serve and an embedding-only
@@ -43,7 +51,9 @@ export class SseProvider extends SseBoundary {
   editProvider(edit: ProviderEdit) {
     return this.post("/providers/edit", edit);
   }
-  removeProvider(name: string) {
-    return this.post("/providers/remove", { name });
+  // 204 means nothing besides the service itself changed.
+  async removeProvider(name: string): Promise<ProviderRemoval> {
+    const body = await this.postMaybe<ProviderRemoval>("/providers/remove", { name });
+    return body ?? { movedTo: "", moved: [], cleared: [] };
   }
 }

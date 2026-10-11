@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"time"
 
 	"reasonix/internal/contract/event"
@@ -18,6 +19,9 @@ type samplingRequest struct {
 	// rejection by folding. The recovery is one-shot: a second rejection means
 	// the fold did not reach far enough, not that another one will.
 	overflowFolded bool
+	// overflowRecovery is why that fold did not produce a smaller request, kept
+	// so the failure the user sees names the recovery that was tried.
+	overflowRecovery error
 	// sent is what the visible view held when this request was built, the basis
 	// the provider's reported size is later anchored to.
 	sent usageAnchor
@@ -59,6 +63,9 @@ func (a *Agent) handleSamplingError(
 	// Exhausted retries or non-retryable error: leave the last speculative UI
 	// visible (no discard) so LocalOnly can mirror it.
 	streamSink.Flush()
+	if frozen != nil && frozen.overflowRecovery != nil && last.err != nil {
+		last.err = fmt.Errorf("%w (context recovery did not help: %w)", last.err, frozen.overflowRecovery)
+	}
 	last.usage = finalizeSamplingUsage(billable, result.usage)
 	return false, last
 }

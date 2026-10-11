@@ -111,3 +111,19 @@ func holdsRoot(root config.RootID, dir string, entries []os.DirEntry) bool {
 	}
 	return claimed > 0
 }
+
+// foreignEntries names what a folder holds that the root does not own: the
+// reason a folder is refused as a target, which a person can act on by moving
+// those entries out.
+func foreignEntries(root config.RootID, entries []os.DirEntry) []string {
+	owned := config.RootOwns(root)
+	var foreign []string
+	for _, entry := range entries {
+		name := entry.Name()
+		if name == markerName || slices.Contains(owned, name) {
+			continue
+		}
+		foreign = append(foreign, name)
+	}
+	return foreign
+}

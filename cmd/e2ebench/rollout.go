@@ -51,7 +51,7 @@ func decideRollout(baseline, candidate []result) rolloutDecision {
 	case bv == cv:
 		hold("rollout.same_version")
 	}
-	if !strings.HasPrefix(corpusVerdict(baseline, candidate), "same") {
+	if !corpusVerdict(baseline, candidate).same {
 		hold("rollout.corpus_mismatch")
 	}
 	if !slices.ContainsFunc(counted(candidate), func(r result) bool { return r.NoSolution }) {

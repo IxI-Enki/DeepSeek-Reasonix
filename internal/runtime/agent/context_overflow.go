@@ -97,17 +97,16 @@ func (a *contextWindow) noteAcceptedPromptTokens(usage *provider.Usage) {
 	a.windowProbe.noteAccepted(usage.LatestPromptTokens())
 }
 
-// refusedOverWindow classifies a refusal that carries no overflow code by what
-// can be measured: the endpoint rejected the request as malformed or too large
-// (400, 413) and our own estimate of it is past the window. The wording of the
-// refusal is not read; a wrong call costs one fold, which recovery bounds.
+// refusedOverWindow classifies a codeless 400/413 by measurement: the estimate
+// plus the configured (not the clipped) completion and its margin is past the
+// window. The wording is not read; a wrong call costs one bounded fold.
 func (a *contextWindow) refusedOverWindow(frozen *samplingRequest, err error) bool {
 	var apiErr *provider.APIError
 	if !errors.As(err, &apiErr) || (apiErr.Status != http.StatusBadRequest && apiErr.Status != http.StatusRequestEntityTooLarge) {
 		return false
 	}
 	window := a.effectiveContextWindow()
-	return window > 0 && a.estimatedRequestTokens(frozen.req) > window
+	return window > 0 && a.estimatedRequestTokens(frozen.req)+a.configuredOutputBudget(a.maxOutputTokens)+outputBudgetReserveFor(window) > window
 }
 
 // recoverContextOverflow answers a provider's "this input is too long" by
@@ -125,13 +124,16 @@ func (a *contextWindow) recoverContextOverflow(ctx context.Context, frozen *samp
 	if _, prepareErr := a.contextManager().Prepare(ctx, ContextPreparePolicy{
 		Trigger: CompactionTriggerOverflow,
 	}); prepareErr != nil {
+		frozen.overflowRecovery = prepareErr
 		return false
 	}
 	rebuilt, buildErr := a.prepareSamplingRequest(ctx)
 	if buildErr != nil {
+		frozen.overflowRecovery = buildErr
 		return false
 	}
 	if sessionstore.ProviderVisibleFingerprint(provider.ModelMessages(rebuilt.req.Messages)) == refused {
+		frozen.overflowRecovery = errors.New("folding freed nothing to send")
 		return false
 	}
 	frozen.req = rebuilt.req

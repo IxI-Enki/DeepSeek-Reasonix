@@ -24,3 +24,9 @@ export function nameQueued(s: SessionState, id: string, itemId: string, queued: 
     runtime: said ? s.runtime : [...s.runtime, { id: nextId(), level: "warn", code: QUEUE_HELD, text: "" }],
   };
 }
+
+// The queue panel, which the kernel authors, is where a held line is shown; a
+// transcript row that still says it waits is the stale half.
+export function withoutPendingRow(s: SessionState, itemId: string): SessionState {
+  return { ...s, items: s.items.filter((i) => !(i.t === "user" && i.pending && i.itemId === itemId)) };
+}

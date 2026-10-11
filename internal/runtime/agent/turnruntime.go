@@ -27,6 +27,8 @@ type turnRuntime struct {
 	executorHandoff bool
 	input           string
 	workDurationMs  func() int64
+	// answeredMs is the run time at the last answer that asked for no tool.
+	answeredMs int64
 
 	// budget is the turn's spend axis: tokens, money, wall clock.
 	budget runBudget
@@ -62,6 +64,9 @@ type turnRuntime struct {
 	// SetAgentPreset change. policySet marks that beginRunTurn derived it.
 	policy    taskpolicy.TaskPolicy
 	policySet bool
+
+	// jobSession scopes which background jobs count as this turn's writers.
+	jobSession string
 
 	// reviewWarnings are warn-level findings to surface in the final summary.
 	reviewWarnings []string

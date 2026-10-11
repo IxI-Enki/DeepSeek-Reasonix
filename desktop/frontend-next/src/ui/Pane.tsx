@@ -1,4 +1,6 @@
 import { memo, useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
+import { loadReceiptPref, receiptPrefOf } from "../state/receiptpref";
+import { ReceiptPrefContext } from "../state/foldpref";
 import { money } from "../i18n/format";
 import { reason } from "../i18n/kernel";
 import { t } from "../i18n";
@@ -47,6 +49,9 @@ import { PostureNote } from "./PostureNote";
 import { useStatusPoll } from "./useStatusPoll";
 import { useCheckpointRefresh } from "./useCheckpointRefresh";
 import { LiveWork, useLiveWork } from "../state/foldpref";
+import { loadChangedFilesPref, useShowsChangedFiles } from "../state/changedfiles";
+import { loadFoldWorkPref, useFoldsTurnWork } from "../state/foldwork";
+import { ChangedFilesPill } from "./ChangedFilesPill";
 
 export type { PaneReport };
 
@@ -66,7 +71,7 @@ const totalsOf = (st: SessionStatus) => ({
   incompleteReason: st.sessionCostQuote?.incompleteReason,
 });
 
-function PaneView({ port, rt, title, active, visible, sideHost, side, onFocus, onReport, onSessionChanged, onTurnDone, pulse, findPulse, onSettings, needsProject, onOpenProject, onKeepHere, theme, dockW, dockMax, onDockW, manualBrowser = false, onManualBrowser, alert }: PaneProps) {
+function PaneView({ port, rt, title, active, visible, sideHost, side, onFocus, onReport, onSessionChanged, onTurnDone, pulse, findPulse, onSettings, needsProject, onOpenProject, onKeepHere, theme, dockW, dockMax, onDockW, manualBrowser = false, browserAsk = 0, onManualBrowser, alert }: PaneProps) {
   const [s, dispatch] = useReducer(reduce, initialState);
   const [traj, trajDispatch] = useReducer(reduceTraj, initialTraj);
   const [sessionRead, setSessionRead] = useState<SessionRead>({ kind: "pending" });
@@ -138,6 +143,8 @@ function PaneView({ port, rt, title, active, visible, sideHost, side, onFocus, o
 
   const [wallet, refreshWallet] = useWallet(port, accountOf(status?.modelRef));
   const hideAmounts = useHidesAmounts();
+
+  useEffect(() => { void loadReceiptPref(port, !rt.host); }, [port, rt.host]);
 
   const revalue = useCallback(() => {
     port.status().then((st) => { applyStatus(st); dispatch(totalsOf(st) as never); }).catch(() => {});
@@ -277,6 +284,17 @@ function PaneView({ port, rt, title, active, visible, sideHost, side, onFocus, o
   }, [ready, reloadMcp, status?.sessionPath, running]);
   useCheckpointRefresh(port, status?.sessionPath, running, setCheckpoints);
   // A call that may write can have moved the tree before the turn ends.
+  const pillOn = useShowsChangedFiles(port);
+  const changeCount = tree?.repo ? tree.changes.length : 0;
+  const pill = pillOn && !!tree?.repo;
+  const [revealChanges, setRevealChanges] = useState(0);
+  const openChanges = useCallback(() => {
+    setRevealChanges((n) => n + 1);
+    showView("browser");
+  }, [showView]);
+  useEffect(() => { void loadChangedFilesPref(port); }, [port]);
+  useEffect(() => { void loadFoldWorkPref(port); }, [port]);
+  const foldWork = useFoldsTurnWork(port);
   const refreshTree = useCallback(() => { void port.changes().then(setTree).catch(() => setTree(null)); void port.workspaceGit().then(setGit).catch(() => setGit(null)); }, [port]);
   useEffect(() => { if (ready || counts.wrote) refreshTree(); }, [ready, refreshTree, status?.sessionPath, running, counts.wrote]);
 
@@ -330,7 +348,8 @@ function PaneView({ port, rt, title, active, visible, sideHost, side, onFocus, o
     onRevise: () => setAskFocus((n) => n + 1),
   });
 
-  const find = useFind(s.items, findPulse, active, useCallback(() => showView("flow"), [showView]));
+  const receiptPref = receiptPrefOf(port);
+  const find = useFind(s.items, findPulse, active, useCallback(() => showView("flow"), [showView]), receiptPref);
 
   const onRunDetail = useCallback(() => showView("analysis"), [showView]);
   const { quote, reply, onResend } = useReplyActions({ port, items: s.items, checkpoints, running, model: status?.label, submit, reloadSession, onSettings, onRunDetail, onError: fail });
@@ -389,9 +408,12 @@ function PaneView({ port, rt, title, active, visible, sideHost, side, onFocus, o
       <div className="pbody" data-dock={tab === "flow" ? "" : undefined} data-full={tab === "browser" ? "" : undefined}>
       <div className="pviews">
 
+      <ReceiptPrefContext.Provider value={receiptPref}>
       <PaneShown.Provider value={shown}>
       <LiveWork.Provider value={live}>
       <Transcript port={port}
+        foldWork={foldWork}
+        turnRunning={running}
         reply={reply}
         onResend={onResend}
         items={s.items}
@@ -426,6 +448,7 @@ function PaneView({ port, rt, title, active, visible, sideHost, side, onFocus, o
       />
       </LiveWork.Provider>
       </PaneShown.Provider>
+      </ReceiptPrefContext.Provider>
 
       <div className="scroll" data-pane="analysis" hidden={tab !== "analysis"}>
         {tab === "analysis" && (
@@ -453,10 +476,11 @@ function PaneView({ port, rt, title, active, visible, sideHost, side, onFocus, o
             port={port}
             tabs={pages}
             manual={manualBrowser}
+            browserAsk={browserAsk}
             shown={visible && workbench}
             onSurfaces={setSurfaces}
             scheme={theme === "light" ? "light" : "dark"}
-            changes={tree?.changes ?? []} onTreeChanged={refreshTree}
+            changes={tree?.changes ?? []} onTreeChanged={refreshTree} revealChanges={revealChanges}
             running={running}
             wrote={counts.wrote}
             remote={!!rt.host}
@@ -511,7 +535,8 @@ function PaneView({ port, rt, title, active, visible, sideHost, side, onFocus, o
           )}
         </div>
         {alert && <div className="cmpalert">{alert}</div>}
-        <Composer port={port} status={status} running={running} quote={quote} restore={restored} focus={askFocus} onSubmit={submit} onChanged={refreshStatus} onError={fail} onSettings={onSettings} changeCount={tree?.repo ? tree.changes.length : 0} git={git} onTreeChanged={refreshTree} pulse={pulse} draftKey={draftKey(rt.host ?? "", rt.root, rt.sessionPath || status?.sessionPath || "")} />
+        {pill && <ChangedFilesPill changes={tree?.changes ?? []} onOpen={openChanges} />}
+        <Composer port={port} status={status} running={running} quote={quote} restore={restored} focus={askFocus} onSubmit={submit} onChanged={refreshStatus} onError={fail} onSettings={onSettings} changeCount={changeCount} countElsewhere={pill} git={git} onTreeChanged={refreshTree} pulse={pulse} draftKey={draftKey(rt.host ?? "", rt.root, rt.sessionPath || status?.sessionPath || "")} />
         <MeterRail
           tps={tps} trail={trail} running={running} speed={speed} metrics={s.metrics} ctx={ctx} mcp={mcp} cost={cost}
           wallet={wallet} hideAmounts={hideAmounts} tasks={rail.tasks} jobs={jobs} onSettings={onSettings}

@@ -6,7 +6,6 @@ import { plural, t } from "../i18n";
 import { currentStep, stepDone, stepLabel } from "./session_types";
 import type { Item, Metrics, PlanStep, RememberedFact, RuntimeNotice, SessionState, TodoStatus, TurnTerminal, Waiting } from "./session_types";
 import { foldUsage, quoteAmount } from "./usage";
-import { setShowsReceipt, showsReceipt } from "./prefs";
 
 // The types live next door; this stays their way in, so no reader of a
 // session has to know they were split off.
@@ -18,13 +17,13 @@ import { askFromCall, promptOpen, prompted, sealByReceipt } from "./prompts";
 import { nameTurnStart, othersSteer } from "./turn_start";
 import { appendText, foldMessage, sealSay } from "./say";
 import { nextId } from "./ids";
+import { worked } from "./worked";
 import { chipLabel, IDLE, RUNNING } from "./chip";
 import { foldStall } from "./stall";
-import { nameQueued } from "./queued";
+import { nameQueued, withoutPendingRow } from "./queued";
 import { dropTool, foldLastRead, foldTool, isSubagentProgress, mergeReads, notePhase } from "./fold";
 export { chipLabel };
 export { quoteAmount };
-export { setShowsReceipt, showsReceipt };
 
 // doing is what the status chip prints. These two values are also read back by
 // the reducer, so they get a name: a comparison against a sentence is one copy
@@ -213,6 +212,8 @@ export type SessionEvent =
   | { kind: "__entered"; ids: string[] };
 
 function apply(s: SessionState, ev: SessionEvent): SessionState {
+  // A line the kernel holds for a retry waits in the queue panel, not here.
+  if (ev.kind === "notice" && ev.code === "unapplied_steer" && ev.itemId) s = withoutPendingRow(s, ev.itemId);
   if (ev.kind === "__error") return { ...s, error: ev.text };
   if (ev.kind === "__entered") {
     const spent = new Set(ev.ids);
@@ -518,7 +519,7 @@ function apply(s: SessionState, ev: SessionEvent): SessionState {
         (i) => i.t === "user" && i.pending && (ev.itemId ? i.itemId === ev.itemId : i.text === ev.text),
       );
       if (at < 0) return { ...s, steerQueue: q, items: othersSteer(s.items, ev) };
-      const row = { ...(s.items[at] as Extract<Item, { t: "user" }>), pending: false, steer: true, via: ev.via };
+      const row = { ...(s.items[at] as Extract<Item, { t: "user" }>), pending: false, steer: true, via: ev.via, attachments: ev.attachments };
       return { ...s, steerQueue: q, items: [...s.items.slice(0, at), ...s.items.slice(at + 1), row] };
     }
 
@@ -606,7 +607,7 @@ function apply(s: SessionState, ev: SessionEvent): SessionState {
         doing: ev.outcome === "no_progress" ? "已暂停" : ev.cancelled ? "已取消" : ev.err ? "已中断" : "已完成",
         waiting: {},
         plan: livePlan(s.plan),
-        items: withReceipt(sealTurn(sealSay(s.items, true), ev.outcome === "no_progress" || ev.cancelled ? undefined : ev.err), ev.receipt),
+        items: withReceipt([...sealTurn(sealSay(s.items, true), ev.outcome === "no_progress" || ev.cancelled ? undefined : ev.err), ...worked(ev.workDurationMs)], ev.receipt),
       };
 
     default:
@@ -628,15 +629,10 @@ function turnTerminal(ev: WireEvent): TurnTerminal {
 }
 
 // withReceipt appends the turn's completion record when the kernel says it has
-// something to say — and when this reader wants to read it. Whether a receipt
-// has content is the kernel's answer and is not restated here; whether it is
-// wanted on this screen is the reader's, and belongs where the panel widths
-// already live rather than in a config the whole install shares.
-//
-// The check itself is untouched either way: it still runs, still decides
-// readiness, and still reaches the trajectory. Only the card is withheld.
+// something to say. Whether the card is drawn is the reader's choice, made at
+// render time, so the record stays in the transcript either way.
 function withReceipt(items: Item[], r?: Receipt): Item[] {
-  if (!r?.saysSomething || !showsReceipt()) return items;
+  if (!r?.saysSomething) return items;
   return [...items, { t: "receipt", id: nextId(), r }];
 }
 
@@ -648,7 +644,7 @@ function withReceipt(items: Item[], r?: Receipt): Item[] {
 // eleven. The server strips these before /history now — this is what covers
 // sessions already on disk.
 const CONTROL =
-  /<(reasoning-language|response-language|execution-policy|memory-update|background-jobs|active-goal|autoresearch-runtime|hook-context|available-skills|project-instructions|capability-route|interrupted-turn-recovery|workspace|scheduled-run|mcp-prompt-failure)[\s\S]*?<\/\1>\s*/g;
+  /<(reasoning-language|response-language|execution-policy|memory-update|background-jobs|active-goal|autoresearch-runtime|hook-context|available-skills|current-date|project-instructions|capability-route|interrupted-turn-recovery|workspace|scheduled-run|mcp-prompt-failure|refused-calls)[\s\S]*?<\/\1>\s*/g;
 const stripControl = (s: string) => s.replace(CONTROL, "").trim();
 
 // A plan that ran to the end is spent: struck through in the rail it reads as
@@ -705,7 +701,7 @@ export function fromHistory(msgs: HistoryMessage[]): { items: Item[]; executions
       // after an upgrade as well as for newly written history.
       const legacyHostRepair = m.content.startsWith("The following tools are unavailable in the current workflow phase:");
       const text = m.hostAuthored || legacyHostRepair ? "" : stripControl(m.content);
-      if (text) out.push({ t: "user", id: nextId(), text, msgIndex: m.msgIndex, steer: m.steer, via: m.via });
+      if (text) out.push({ t: "user", id: nextId(), text, msgIndex: m.msgIndex, steer: m.steer, via: m.via, attachments: m.attachments });
       continue;
     }
     if (m.role === "assistant") {
@@ -737,6 +733,7 @@ export function fromHistory(msgs: HistoryMessage[]): { items: Item[]; executions
           out.push({ t: "say", id: nextId(), text: part.text, reasoning, done: true, model: m.modelRef, thoughtMs: reasoning ? m.thoughtMs : undefined });
           reasoning = undefined;
         }
+        out.push(...worked(m.workDurationMs));
       }
       for (const c of m.toolCalls ?? []) {
         if (c.id) {

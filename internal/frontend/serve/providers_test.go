@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -258,7 +259,7 @@ func TestRemoveProviderInUseGoesWhenIdle(t *testing.T) {
 
 	resp := postProvider(t, srv.URL, "/providers/remove", `{"name":"existing"}`)
 	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusNoContent {
+	if resp.StatusCode != http.StatusOK {
 		b, _ := readAllString(resp)
 		t.Fatalf("removing the idle in-use provider = %d: %s", resp.StatusCode, b)
 	}
@@ -282,7 +283,7 @@ func TestRemoveProviderInUseMovesTheConversation(t *testing.T) {
 	add.Body.Close()
 	resp := postProvider(t, srv.URL, "/providers/remove", `{"name":"existing"}`)
 	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusNoContent {
+	if resp.StatusCode != http.StatusOK {
 		b, _ := readAllString(resp)
 		t.Fatalf("remove = %d: %s", resp.StatusCode, b)
 	}
@@ -501,5 +502,49 @@ func TestProviderNameRE_Boundaries(t *testing.T) {
 		if got := providerNameRE.MatchString(name); got != want {
 			t.Errorf("providerNameRE(%q) = %v, want %v", name, got, want)
 		}
+	}
+}
+
+func TestRemoveProviderLeavesNoRoleNamingIt(t *testing.T) {
+	s := newProviderEditServer(t)
+	s.AllowProviderEdit()
+	srv := httptest.NewServer(operatorHandler(s))
+	defer srv.Close()
+
+	add := postProvider(t, srv.URL, "/providers", `{"name":"spare","kind":"openai","baseUrl":"https://x.invalid","models":["m"]}`)
+	add.Body.Close()
+	path := config.UserConfigPath()
+	body, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	roles := "[desktop]\nprovider_access = [\"spare\", \"deepseek\"]\n\n[agent]\nguardian_model = \"spare/m\"\nvision_model = \"spare\"\nadvisor_model = \"spare/m\"\n"
+	if err := os.WriteFile(path, append(body, []byte("\n"+roles)...), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	resp := postProvider(t, srv.URL, "/providers/remove", `{"name":"spare"}`)
+	defer resp.Body.Close()
+	b, _ := readAllString(resp)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("remove = %d: %s", resp.StatusCode, b)
+	}
+	var report struct {
+		MovedTo string   `json:"movedTo"`
+		Moved   []string `json:"moved"`
+		Cleared []string `json:"cleared"`
+	}
+	if err := json.Unmarshal([]byte(b), &report); err != nil {
+		t.Fatalf("remove body %q: %v", b, err)
+	}
+	if want := []string{"vision", "guardian", "advisor"}; !slices.Equal(report.Cleared, want) || len(report.Moved) != 0 {
+		t.Fatalf("report = %+v, want cleared %v", report, want)
+	}
+	saved, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(saved), "spare") {
+		t.Fatalf("saved config still names the removed provider:\n%s", saved)
 	}
 }

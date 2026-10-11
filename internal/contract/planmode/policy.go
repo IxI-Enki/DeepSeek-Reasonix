@@ -120,6 +120,13 @@ func (Policy) Decide(call Call) Decision {
 		}
 	}
 	name := strings.TrimSpace(call.Name)
+	if name == "browser_open" {
+		return Decision{
+			Blocked: true,
+			Reason:  BlockPhaseOptOut,
+			Message: "blocked: browser_open may execute page scripts and send requests while loading. During Plan mode, use web_fetch to read page text; after plan approval, browser_open is available under the ordinary site permission policy.",
+		}
+	}
 	if name == "complete_step" {
 		return Decision{
 			Blocked: true,

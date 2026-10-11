@@ -573,6 +573,10 @@ type Event struct {
 	Readiness      *FinalReadiness          // TurnDone: structured final-readiness recovery state
 	Receipt        *CompletionReceipt       // TurnDone: what the host verified, and what it could not
 	CheckpointTurn *int                     // TurnDone: authoritative checkpoint for this turn's visible user message
+	// TurnDone: wall-clock ms the turn's runs took up to their final answers,
+	// approval and tool waits included, summed over goal continuations; 0 when the
+	// turn failed, was cancelled, or gave no final answer.
+	WorkDurationMs int64
 	// TurnStarted: which message this turn is about — the conversation's own
 	// turn number, and the session index that message takes. Both nil when the
 	// turn opened no authored message.
@@ -582,6 +586,9 @@ type Event struct {
 	// the window. Text carries the message itself, which a client that did not
 	// send it has no other way to draw.
 	Via *provider.Via
+	// TurnStarted / Steer: the stored attachments the message references, as
+	// the host resolved them.
+	Attachments []Attachment
 	// Steer: the host wrote this guidance, so no client draws it as the user's.
 	HostAuthored     bool
 	Compaction       Compaction          // Compaction

@@ -13,7 +13,7 @@ import (
 // occurrence-time quote. Order from the agent:
 //
 //	Coalesce → GoalUsageTee → Sync → CostQuote → [Recorder] → frontend
-func quotedSink(cfg *config.Config, opts Options) event.Sink {
+func quotedSink(cfg *config.Config, opts Options) (event.Sink, *event.QuoteContext) {
 	ctx := &event.QuoteContext{
 		DisplayRequest: pricing.DisplayRequest{
 			Currency: cfg.ExplicitDisplayCurrency(),
@@ -37,5 +37,5 @@ func quotedSink(cfg *config.Config, opts Options) event.Sink {
 	if opts.StatsSource.Valid() {
 		quoted = stats.NewRecorder(quoted, opts.roots().StatsDir(), opts.StatsSource.String())
 	}
-	return event.Sync(event.NewCostQuoteSink(quoted, ctx))
+	return event.Sync(event.NewCostQuoteSink(quoted, ctx)), ctx
 }

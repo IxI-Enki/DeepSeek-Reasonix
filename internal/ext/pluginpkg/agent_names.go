@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+
+	"reasonix/internal/base/textutil"
 )
 
 func (p Package) agentRefs() []AgentRef {
@@ -27,7 +29,7 @@ func (p Package) selectAgentRefs(refs []AgentRef) ([]AgentRef, []string) {
 		}
 		seenPaths[ref.Path] = true
 		if previous, exists := byName[ref.Name]; exists {
-			warnings = append(warnings, fmt.Sprintf("agent name %q uses %s; %s is shadowed", ref.Name, RelativeRoot(p.Root, previous), RelativeRoot(p.Root, ref.Path)))
+			warnings = append(warnings, fmt.Sprintf("agent name %q uses %s; %s is shadowed", ref.Name, textutil.ShownLocator(RelativeRoot(p.Root, previous)), textutil.ShownLocator(RelativeRoot(p.Root, ref.Path))))
 			continue
 		}
 		byName[ref.Name] = ref.Path

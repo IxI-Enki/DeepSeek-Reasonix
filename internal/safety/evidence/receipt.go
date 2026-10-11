@@ -23,6 +23,9 @@ type Receipt struct {
 	CitedChecks []string       `json:"cited_checks,omitempty"`
 	TodoStep    *TodoStepMatch `json:"todo_step,omitempty"`
 	Paths       []string       `json:"paths,omitempty"`
+	// HostOwned are the Paths the host judged to be its own state when the call
+	// ran, so a later change to the filesystem cannot reclassify the write.
+	HostOwned []string `json:"host_owned,omitempty"`
 	// MutationPaths preserves path spelling before identity normalization can
 	// fold case or discard empty paths; scope exemptions must fail closed on both.
 	MutationPaths []string `json:"mutation_paths,omitempty"`

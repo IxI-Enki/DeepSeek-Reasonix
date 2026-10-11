@@ -60,6 +60,14 @@ type Progress struct {
 // changed: the runtime still reads the original location.
 var ErrMoveInterrupted = errors.New("storage: move interrupted before commit")
 
+// ErrSourceChanging means the source kept changing faster than the copy could
+// catch up. Nothing was committed, so the runtime is still on its own data.
+var ErrSourceChanging = errors.New("storage: the folder being moved keeps changing while it is copied")
+
+// maxCatchUpRounds bounds how many times a move re-copies what a running
+// process wrote after the first pass before it gives up.
+const maxCatchUpRounds = 3
+
 // Move relocates a root: copy, prove the copy, then point the configuration at
 // it — a failure before that last step costs only bytes the next attempt reuses.
 // The running process keeps reading the old location, because open catalogs and
@@ -93,10 +101,9 @@ func Move(ctx context.Context, plan Plan, report func(Progress)) error {
 	if err := writeJournal(journal); err != nil {
 		return err
 	}
-	for _, entry := range owned {
-		if err := verifyTree(ctx, filepath.Join(plan.From, entry), filepath.Join(plan.To, entry)); err != nil {
-			return err
-		}
+	seen, err := settleCopy(ctx, owned, plan, notify)
+	if err != nil {
+		return err
 	}
 
 	// Recorded once the copy is proved and before the configuration is: a
@@ -120,6 +127,13 @@ func Move(ctx context.Context, plan Plan, report func(Progress)) error {
 	// Reclaiming is the one step allowed to fail quietly: the move already
 	// succeeded, and a source that could not be deleted is wasted space rather
 	// than lost data.
+	if changed := changedSince(plan.From, owned, seen); changed != "" {
+		notify(Progress{Phase: PhaseDone, Bytes: copied, Total: plan.Bytes,
+			Detail: "moved; the old folder was written to after the copy was checked, so it was kept instead of deleted: " + changed})
+		journal.Phase = PhaseDone
+		_ = writeJournal(journal)
+		return nil
+	}
 	if err := reclaimOwned(plan.From, owned); err != nil {
 		notify(Progress{Phase: PhaseDone, Bytes: copied, Total: plan.Bytes,
 			Detail: "moved; the old folder could not be removed and can be deleted by hand"})
@@ -289,12 +303,77 @@ func copyFile(from, to string, info fs.FileInfo) error {
 	return nil
 }
 
-// verifyTree proves every source file arrived byte for byte. Size alone would
-// accept a torn copy that happened to land on the same length, and this is the
-// last check before the source is deleted.
-func verifyTree(ctx context.Context, from, to string) error {
-	return filepath.WalkDir(from, func(path string, entry fs.DirEntry, err error) error {
+// seenFile is what a source file looked like when its copy was proved.
+type seenFile struct {
+	size int64
+	mod  time.Time
+}
+
+// settleCopy proves every source file arrived byte for byte, copying again what
+// a still-running process wrote after the first pass. Size alone would accept a
+// torn copy that happened to land on the same length, and this is the last
+// check before the source is deleted. It reports what it saw so the caller can
+// tell, after the commit, whether the source moved again.
+func settleCopy(ctx context.Context, owned []string, plan Plan, notify func(Progress)) (map[string]seenFile, error) {
+	for round := 0; ; round++ {
+		seen := map[string]seenFile{}
+		var stale []string
+		var verified, files int64
+		for _, entry := range owned {
+			from, to := filepath.Join(plan.From, entry), filepath.Join(plan.To, entry)
+			err := walkFiles(ctx, from, func(rel string, info fs.FileInfo) error {
+				src := filepath.Join(from, rel)
+				same, err := sameBytes(src, filepath.Join(to, rel))
+				if err != nil {
+					return err
+				}
+				verified += info.Size()
+				files++
+				notify(Progress{Phase: PhaseVerifying, Bytes: verified, Total: plan.Bytes, Files: files})
+				if same {
+					seen[src] = seenFile{size: info.Size(), mod: info.ModTime()}
+					return nil
+				}
+				stale = append(stale, filepath.Join(entry, rel))
+				return nil
+			})
+			if err != nil {
+				return nil, err
+			}
+		}
+		if len(stale) == 0 {
+			return seen, nil
+		}
+		if round == maxCatchUpRounds {
+			return nil, fmt.Errorf("%w: %d files still differ (first: %s)", ErrSourceChanging, len(stale), stale[0])
+		}
+		notify(Progress{Phase: PhaseVerifying, Bytes: verified, Total: plan.Bytes, Files: files,
+			Detail: fmt.Sprintf("%d files changed while they were being copied; copying them again", len(stale))})
+		for _, rel := range stale {
+			src := filepath.Join(plan.From, rel)
+			info, err := os.Stat(src)
+			if errors.Is(err, fs.ErrNotExist) {
+				continue
+			}
+			if err != nil {
+				return nil, err
+			}
+			if err := copyFile(src, filepath.Join(plan.To, rel), info); err != nil {
+				return nil, err
+			}
+		}
+	}
+}
+
+// walkFiles visits every regular file under root except a marker, handing the
+// callback its path relative to root. A file that vanishes between listing and
+// stat was deleted by the running process, which is not a copy failure.
+func walkFiles(ctx context.Context, root string, visit func(rel string, info fs.FileInfo) error) error {
+	return filepath.WalkDir(root, func(path string, entry fs.DirEntry, err error) error {
 		if err != nil {
+			if errors.Is(err, fs.ErrNotExist) {
+				return nil
+			}
 			return err
 		}
 		if ctxErr := ctx.Err(); ctxErr != nil {
@@ -303,26 +382,66 @@ func verifyTree(ctx context.Context, from, to string) error {
 		if entry.IsDir() {
 			return nil
 		}
-		rel, relErr := filepath.Rel(from, path)
+		rel, relErr := filepath.Rel(root, path)
 		if relErr != nil {
 			return relErr
 		}
 		if rel == markerName {
 			return nil
 		}
-		srcSum, err := fileDigest(path)
-		if err != nil {
-			return err
+		info, infoErr := entry.Info()
+		if errors.Is(infoErr, fs.ErrNotExist) {
+			return nil
 		}
-		dstSum, err := fileDigest(filepath.Join(to, rel))
-		if err != nil {
-			return fmt.Errorf("verify %s: %w", rel, err)
+		if infoErr != nil {
+			return infoErr
 		}
-		if srcSum != dstSum {
-			return fmt.Errorf("verify %s: the copy does not match the original", rel)
-		}
-		return nil
+		return visit(rel, info)
 	})
+}
+
+// sameBytes reports whether the file at dst holds exactly what src holds. A
+// destination that is not there yet is a difference to copy, not an error; a
+// source that is gone is treated as equal because there is nothing left to prove.
+func sameBytes(src, dst string) (bool, error) {
+	srcSum, err := fileDigest(src)
+	if errors.Is(err, fs.ErrNotExist) {
+		return true, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	dstSum, err := fileDigest(dst)
+	if errors.Is(err, fs.ErrNotExist) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("verify %s: %w", dst, err)
+	}
+	return srcSum == dstSum, nil
+}
+
+// changedSince names the first file under owned that is new or differs from
+// what the proof saw, or "" when the source stood still. The runtime keeps
+// writing to the old location until it restarts, so anything it wrote after the
+// proof exists nowhere else and must not be deleted with the rest.
+func changedSince(from string, owned []string, seen map[string]seenFile) string {
+	var changed string
+	for _, entry := range owned {
+		root := filepath.Join(from, entry)
+		_ = walkFiles(context.Background(), root, func(rel string, info fs.FileInfo) error {
+			path := filepath.Join(root, rel)
+			if was, ok := seen[path]; !ok || was.size != info.Size() || !was.mod.Equal(info.ModTime()) {
+				changed = filepath.Join(entry, rel)
+				return fs.SkipAll
+			}
+			return nil
+		})
+		if changed != "" {
+			return changed
+		}
+	}
+	return ""
 }
 
 func fileDigest(path string) (string, error) {

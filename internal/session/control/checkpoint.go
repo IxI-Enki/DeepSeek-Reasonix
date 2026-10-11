@@ -97,6 +97,8 @@ type guardedTurnCheckpoint struct {
 
 type guardedTurnCompletion struct {
 	checkpoint *guardedTurnCheckpoint
+	// workMs sums what each run of the turn reports up to its final answer.
+	workMs atomic.Int64
 }
 
 type guardedTurnCompletionKey struct{}

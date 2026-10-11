@@ -35,15 +35,17 @@ type ciStep struct {
 }
 
 // runsOnWindows reports whether any leg of the job lands on a Windows runner,
-// reading a matrix-valued runs-on through the matrix it names.
+// reading a runs-on expression through the matrix it names. A pull request may
+// substitute an ubuntu runner for a leg, but the matrix entry is still the
+// Windows leg that runs its steps on pushes, so it is held to the same rule.
 func (j ciJob) runsOnWindows() bool {
 	label := strings.TrimSpace(j.RunsOn)
 	if inner, ok := strings.CutPrefix(label, "${{"); ok {
-		key, _ := strings.CutSuffix(inner, "}}")
-		key, ok = strings.CutPrefix(strings.TrimSpace(key), "matrix.")
+		_, rest, ok := strings.Cut(inner, "matrix.")
 		if !ok {
 			return false
 		}
+		key := rest[:len(rest)-len(strings.TrimLeft(rest, "abcdefghijklmnopqrstuvwxyz_0123456789"))]
 		values, _ := j.Strategy.Matrix[key].([]any)
 		return slices.ContainsFunc(values, func(v any) bool {
 			s, _ := v.(string)

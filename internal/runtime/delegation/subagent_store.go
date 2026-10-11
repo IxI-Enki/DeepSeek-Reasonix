@@ -718,6 +718,17 @@ func (s *SubagentStore) lock(ref string) (func(), error) {
 	}, nil
 }
 
+// held reports whether this process is running the child right now, which is
+// what separates a live "running" record from a crash leftover.
+func (s *SubagentStore) held(ref string) bool {
+	if s == nil {
+		return false
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.locked[ref]
+}
+
 func (s *SubagentStore) newRef() (string, error) {
 	var b [6]byte
 	if _, err := rand.Read(b[:]); err != nil {

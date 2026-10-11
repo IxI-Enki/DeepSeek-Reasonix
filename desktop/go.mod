@@ -14,7 +14,7 @@ require reasonix v0.0.0
 require (
 	aead.dev/minisign v0.3.0
 	golang.org/x/mod v0.41.0
-	golang.org/x/sys v0.48.0
+	golang.org/x/sys v0.49.0
 )
 
 require (

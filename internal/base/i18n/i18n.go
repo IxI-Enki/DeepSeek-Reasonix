@@ -22,7 +22,6 @@ type Messages struct {
 	// welcome / status screen
 	WelcomeTitleFmt string // first-run box title — %s = product name (styled)
 	NoConfigYet     string // first-run cue under the welcome box
-
 	// `reasonix init` — points to the in-session /init skill + setup
 	InitHint string
 
@@ -92,6 +91,8 @@ type Messages struct {
 	NoticeJobFinishedFmt    string // a background job ended — %s its label, else its id
 	NoticeJobKilledFmt      string // a background job was killed — %s its label, else its id
 	NoticeJobFailedFmt      string // a background job failed — %s its label, else its id
+	NoticeJobExitFmt        string // how its process ended — %d the exit code
+	NoticeJobSignalFmt      string // how its process ended — %d the signal number
 	NoticeInboxRecoveredFmt string // a reopened inbox came up paused with unfinished instructions — %d count
 	TUIQuestion             string // an answered question that carried no prompt
 	TUISubagentCallsFmt     string // calls a sub-agent made under its task — %d count
@@ -104,7 +105,8 @@ type Messages struct {
 	// chat TUI status line / approval banner.
 	ChatThinking                    string // live reasoning marker label, e.g. "thinking…"
 	ChatThoughtForFmt               string // collapsed reasoning summary, "%d" = elapsed s
-	ChatStatusThinkingFmt           string // "%s thinking… (%ds · %s cancels)" — %s = spinner, %d = elapsed s, %s = interrupt key
+	ChatWorkedForFmt                string // end-of-turn line, "%s" = the turn's run time
+	ChatStatusThinkingFmt           string // "%s thinking… (%s · %s cancels)" — %s = spinner, %s = elapsed, %s = interrupt key
 	TurnPhaseWorking                string // host turn_phase label: working
 	TurnPhaseChecking               string // host turn_phase label: checking
 	TurnPhaseVerifying              string // host turn_phase label: verifying
@@ -125,8 +127,8 @@ type Messages struct {
 	ChatSubagentProgressDoneFmt     string // terminal summary — %s = phase label, %d = duration s ("%s · %ds")
 	ChatSubagentPreviewLabel        string // verbose preview marker ("▎")
 	ChatStatusRetryingFmt           string // "%s retrying (%d/%d)…" — %s = spinner, %d/%d = attempt/max
-	ChatStatusCancellingFmt         string // "%s stopping… (%ds · Ctrl+C exits)" — %s = spinner, %d = elapsed s
-	ChatStatusCancellingViFmt       string // "%s stopping… (%ds)" — vi mode: Ctrl+C re-cancels instead of exiting, so the hint drops the exit key
+	ChatStatusCancellingFmt         string // "%s stopping… (%s · Ctrl+C exits)" — %s = spinner, %s = elapsed
+	ChatStatusCancellingViFmt       string // "%s stopping… (%s)" — vi mode: Ctrl+C re-cancels instead of exiting, so the hint drops the exit key
 	ChatStatusIdle                  string // shortcuts hint when idle
 	ChatStatusYoloIdle              string // shortcuts hint when idle in YOLO/bypass mode
 	ChatStatusCycleHint             string // plan-toggle shortcut hint shown when no modal prompt owns the status row
@@ -165,48 +167,44 @@ type Messages struct {
 	RecoveryPlanAfterFmt            string // compact proposed-plan line, one %s
 	RecoveryTaskGrantChoices        string // Auto Guard list with a current-task semantic grant
 	SandboxEscapeApprovalChoices    string // approval choice list for OS sandbox escape prompts
-	NotifyTitle                     string // desktop notification title
-	NotifyTurnDone                  string // desktop notification: the turn finished
-	NotifyTurnFailed                string // desktop notification: the turn failed
-	NotifyApproval                  string // desktop notification: something is waiting to be approved
-	NotifyAsk                       string // desktop notification: the model asked a question
-	ApprovalNeededFmt               string // notification text for a pending approval, tool only
-	ApprovalNeededWithSubjectFmt    string // notification text for a pending approval with subject
-	AnswerNeededFmt                 string // notification text for a pending ask question
-	AnswerNeededFromFmt             string // notification text for a pending MCP elicitation, with the server
-	ToolApprovalSourceFmt           string // "Source: %s" / "来源: %s"
-	ToolApprovalBuiltIn             string // built-in tool source label
-	ToolApprovalImageUse            string // image-understanding detail for understand_image-style tools
-	ApprovalToolLabelBash           string // user-facing label for bash approvals
-	ApprovalToolLabelEditFile       string // user-facing label for edit_file approvals
-	ApprovalToolLabelWriteFile      string // user-facing label for write_file approvals
-	ApprovalToolLabelMultiEdit      string // user-facing label for multi_edit approvals
-	ApprovalToolLabelMoveFile       string // user-facing label for move_file approvals
-	ApprovalToolLabelWebFetch       string // user-facing label for web_fetch approvals
-	ApprovalToolLabelRunSkill       string // user-facing label for run_skill approvals
-	ApprovalToolLabelRemember       string // user-facing label for remember approvals
-	ApprovalToolLabelForget         string // user-facing label for forget approvals
-	ApprovalToolLabelSandboxEscape  string // user-facing label for OS sandbox escape approvals
-	MemoryApprovalSaveUpdate        string // subject prefix for remember approval
-	MemoryApprovalBodyLabel         string // label before the body excerpt in remember approval
-	MemoryApprovalArchiveFmt        string // subject for forget approval, %q = memory name
-	SandboxEscapeSubjectFallback    string // fallback subject for a one-shot unconfined sandbox escape approval
-	SandboxEscapeSubjectPrefix      string // subject prefix before the shell command for one-shot unconfined escape approval
-	SandboxEscapeWrapReason         string // reason when no OS sandbox can wrap the command
-	SandboxEscapeRuntimeReason      string // fallback reason when an OS sandbox cannot start the command
-	SandboxEscapeDeclined           string // model-facing denial when the user declines a one-shot unconfined retry
-	EgressApprovalReasonFmt         string // reason for a host outside allowed_domains, %s = host
-	ApprovalToolLabelConfigWrite    string // user-facing label for Reasonix-managed config write approvals
-	ConfigWriteSubjectPrefix        string // subject prefix before the config file path for managed config write approval
-	ConfigWriteReason               string // reason shown for managed config write approval
-	ConfigWriteDeclined             string // model-facing denial when the user declines a managed config write
-	ConfigWriteApprovalChoices      string // approval choice list for managed config write prompts
-	PermissionSavedFmt              string // permission rule saved notice: path, rule
-	PermissionAlreadyAllowedFmt     string // permission rule already covered notice: path, rule
-	PermissionSaveFailedFmt         string // permission rule save failure notice: rule, error
-	DiffFoldedFmt                   string // "… +%d more lines" footer when a writer diff is folded
-	DiffFoldEnabledFmt              string // notice when /diff-fold enables folding, %d = line limit
-	DiffFoldDisabled                string // notice when /diff-fold disables folding (shows all lines)
+	NotifyMessages
+	ApprovalNeededFmt              string // notification text for a pending approval, tool only
+	ApprovalNeededWithSubjectFmt   string // notification text for a pending approval with subject
+	AnswerNeededFmt                string // notification text for a pending ask question
+	AnswerNeededFromFmt            string // notification text for a pending MCP elicitation, with the server
+	ToolApprovalSourceFmt          string // "Source: %s" / "来源: %s"
+	ToolApprovalBuiltIn            string // built-in tool source label
+	ToolApprovalImageUse           string // image-understanding detail for understand_image-style tools
+	ApprovalToolLabelBash          string // user-facing label for bash approvals
+	ApprovalToolLabelEditFile      string // user-facing label for edit_file approvals
+	ApprovalToolLabelWriteFile     string // user-facing label for write_file approvals
+	ApprovalToolLabelMultiEdit     string // user-facing label for multi_edit approvals
+	ApprovalToolLabelMoveFile      string // user-facing label for move_file approvals
+	ApprovalToolLabelWebFetch      string // user-facing label for web_fetch approvals
+	ApprovalToolLabelRunSkill      string // user-facing label for run_skill approvals
+	ApprovalToolLabelRemember      string // user-facing label for remember approvals
+	ApprovalToolLabelForget        string // user-facing label for forget approvals
+	ApprovalToolLabelSandboxEscape string // user-facing label for OS sandbox escape approvals
+	MemoryApprovalSaveUpdate       string // subject prefix for remember approval
+	MemoryApprovalBodyLabel        string // label before the body excerpt in remember approval
+	MemoryApprovalArchiveFmt       string // subject for forget approval, %q = memory name
+	SandboxEscapeSubjectFallback   string // fallback subject for a one-shot unconfined sandbox escape approval
+	SandboxEscapeSubjectPrefix     string // subject prefix before the shell command for one-shot unconfined escape approval
+	SandboxEscapeWrapReason        string // reason when no OS sandbox can wrap the command
+	SandboxEscapeRuntimeReason     string // fallback reason when an OS sandbox cannot start the command
+	SandboxEscapeDeclined          string // model-facing denial when the user declines a one-shot unconfined retry
+	EgressApprovalReasonFmt        string // reason for a host outside allowed_domains, %s = host
+	ApprovalToolLabelConfigWrite   string // user-facing label for Reasonix-managed config write approvals
+	ConfigWriteSubjectPrefix       string // subject prefix before the config file path for managed config write approval
+	ConfigWriteReason              string // reason shown for managed config write approval
+	ConfigWriteDeclined            string // model-facing denial when the user declines a managed config write
+	ConfigWriteApprovalChoices     string // approval choice list for managed config write prompts
+	PermissionSavedFmt             string // permission rule saved notice: path, rule
+	PermissionAlreadyAllowedFmt    string // permission rule already covered notice: path, rule
+	PermissionSaveFailedFmt        string // permission rule save failure notice: rule, error
+	DiffFoldedFmt                  string // "… +%d more lines" footer when a writer diff is folded
+	DiffFoldEnabledFmt             string // notice when /diff-fold enables folding, %d = line limit
+	DiffFoldDisabled               string // notice when /diff-fold disables folding (shows all lines)
 
 	// `ask` tool question card.
 	AskURLSourceFmt      string
@@ -291,6 +289,7 @@ type Messages struct {
 	McpPanelPending              string // /mcp panel row: repository server awaiting the user's approval
 	McpPanelChanged              string // /mcp panel row: what an enabled repository server launches changed
 	McpPanelLaunchFmt            string // /mcp panel: what the selected pending server would start
+	LaunchHiddenRemoved          string // leads a launch line that had invisible characters deleted
 	McpToolDestructive           string // /mcp detail: tool tag
 	McpToolReadOnly              string // /mcp detail: tool tag
 	McpPanelConfirmFmt           string // /mcp: enabling a repository-declared server; server name and launch line
@@ -450,6 +449,7 @@ type Messages struct {
 	GoalEmpty                    string
 	GoalCurrentFmt               string
 	GoalSetFmt                   string
+	GoalResumedFmt               string // %s = goal
 	GoalCleared                  string
 	GoalNotRunning               string
 	GoalNotPaused                string

@@ -85,7 +85,7 @@ func visionFileImageDataURL(path, baseDir string) (string, error) {
 	if info.Mode()&os.ModeSymlink != 0 {
 		return "", fmt.Errorf("image path must not be a symlink")
 	}
-	if info.IsDir() || info.Size() <= 0 || info.Size() > maxImageAttachmentBytes {
+	if info.IsDir() || info.Size() <= 0 || info.Size() > MaxImageAttachmentBytes {
 		return "", fmt.Errorf("image must be between 1 byte and 10 MB")
 	}
 	f, err := root.Open(rel)
@@ -104,11 +104,11 @@ func visionFileImageDataURL(path, baseDir string) (string, error) {
 }
 
 func dataURLFromImageReader(r io.Reader, path string) (string, error) {
-	raw, err := io.ReadAll(io.LimitReader(r, maxImageAttachmentBytes+1))
+	raw, err := io.ReadAll(io.LimitReader(r, MaxImageAttachmentBytes+1))
 	if err != nil {
 		return "", err
 	}
-	if len(raw) == 0 || len(raw) > maxImageAttachmentBytes {
+	if len(raw) == 0 || len(raw) > MaxImageAttachmentBytes {
 		return "", fmt.Errorf("image must be between 1 byte and 10 MB")
 	}
 	mime := visionimage.DetectMime(raw)

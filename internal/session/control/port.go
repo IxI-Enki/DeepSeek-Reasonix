@@ -60,7 +60,7 @@ type TurnControl interface {
 	SubmitDisplay(display, input string)
 	SubmitDeliveryRecovery(display, input string)
 	SubmitInvocationDisplay(display, input string, invocations []InvocationRequest)
-	SubmitHTTPFormat(input, format string)
+	SubmitHTTPFormat(input, format string) Admission
 	Send(input string)
 	SendWithRaw(input, raw string)
 	Run(ctx context.Context, input string) error
@@ -266,6 +266,9 @@ type RuntimeSettings interface {
 	SavePermissionRules(in PermissionLists) error
 	RevokeSessionGrant(rule string) int
 	RevokeRememberedProjectRule(rule string) error
+	WorkspaceRoots() (WorkspaceRoots, error)
+	AddWorkspaceRoot(dir string) (string, error)
+	RemoveWorkspaceRoot(dir string) error
 	SandboxSettings() SandboxSettings
 	SaveSandboxSettings(in SandboxSettings) error
 	BrowserToolsSettings() BrowserToolsSettings
@@ -274,8 +277,19 @@ type RuntimeSettings interface {
 	SaveCompactionSettings(softLimitTokens int) error
 	DisplayCurrencySettings() DisplayCurrencySettings
 	SaveDisplayCurrency(mode string) error
+	ChangedFilesSettings() ChangedFilesSettings
+	SaveChangedFilesSettings(show bool) error
+	FoldWorkSettings() FoldWorkSettings
+	SaveFoldWorkSettings(fold bool) error
 	ProgressWatchSettings() ProgressWatchSettings
 	SaveProgressWatchSettings(in ProgressWatchSettings) error
+	AskTimeoutSettings() AskTimeoutSettings
+	SaveAskTimeoutSettings(seconds int) error
+	AutoArchiveSettings() AutoArchiveSettings
+	SaveAutoArchiveSettings(in AutoArchiveSettings) error
+	ArchiveInactiveSessions() int
+	ReceiptSettings() ReceiptSettings
+	SaveReceiptSettings(show bool) error
 	ConfigProblem() *ConfigProblem
 	RepairConfigFile() (string, error)
 }
@@ -296,6 +310,13 @@ type Extensions interface {
 	ProviderCatalog() []provider.Descriptor
 }
 
+// MCPTrust is the user's decision on MCP tool definitions a server changed. An
+// editor integration surfaces the notice but leaves the decision to a surface
+// that can show what changed.
+type MCPTrust interface {
+	AcceptMCPHeldTools(name, digest string) (int, error)
+}
+
 // Capabilities is the whole pluggable surface, for a frontend that drives all
 // of it. One that drives part of it names that part instead.
 type Capabilities interface {
@@ -303,6 +324,7 @@ type Capabilities interface {
 	Skills
 	Hooks
 	MCPControl
+	MCPTrust
 	RuntimeSettings
 	Extensions
 }
@@ -354,11 +376,15 @@ type SessionPersistence interface {
 // resolving @-references before submission — including what the composer can
 // still offer to complete while the line is being typed.
 type Input interface {
-	SubmitHTTPOptions(input string, opts SubmitOptions)
+	SubmitHTTPOptions(input string, opts SubmitOptions) Admission
 	Compose(text string) string
 	ComposeSynthetic(text string) string
 	ResolveRefs(ctx context.Context, line string) (block string, errs []string)
 	HasRefs(line string) bool
+	// StoredAttachments is the attachments a message references that the host
+	// stored, so a transcript draws them from a field instead of reading the
+	// text for a spelling.
+	StoredAttachments(text string) []event.Attachment
 	CompletionData(lang string) CompletionData
 	ImageInputEnabled() bool
 	DroppedRef(path string) (token, displayPath string, err error)
@@ -379,7 +405,7 @@ type Settings interface {
 // paired device: the same turn and the same decision, carrying who made it.
 // Only the full port names it; an editor has no paired devices to speak for.
 type Provenance interface {
-	SubmitHTTPFrom(input, format string, via *provider.Via)
+	SubmitHTTPFrom(input, format string, via *provider.Via) Admission
 	ApproveFrom(id string, allow, session, persist bool, via *provider.Via)
 	AnswerQuestionFrom(id string, answers []event.AskAnswer, via *provider.Via)
 }
@@ -460,6 +486,7 @@ var (
 	_ Skills             = (*Controller)(nil)
 	_ Hooks              = (*Controller)(nil)
 	_ MCPControl         = (*Controller)(nil)
+	_ MCPTrust           = (*Controller)(nil)
 	_ RuntimeSettings    = (*Controller)(nil)
 	_ Extensions         = (*Controller)(nil)
 	_ Capabilities       = (*Controller)(nil)

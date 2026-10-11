@@ -56,15 +56,15 @@ func TestBuiltinPhaseClassifiersMatchPolicy(t *testing.T) {
 
 // The anchors the rule above is meant to produce. Planning stays fully usable —
 // reading, searching, tracking state, and asking the user all run — while the
-// tools that change the workspace do not.
-func TestPlanningPhaseAdmitsResearchAndRefusesWriters(t *testing.T) {
+// tools that can change state outside the session do not.
+func TestPlanningPhaseAdmitsResearchAndRefusesSideEffects(t *testing.T) {
 	planned := map[string]bool{
 		"read_file": false, "grep": false, "glob": false, "ls": false,
 		"todo_write": false, "web_fetch": false,
 	}
 	refused := map[string]bool{
 		"write_file": false, "edit_file": false, "multi_edit": false,
-		"move_file": false, "notebook_edit": false,
+		"move_file": false, "notebook_edit": false, "browser_open": false, "browser_act": false,
 	}
 	for _, tl := range tool.Builtins() {
 		got, _ := decideBuiltin(tl)
@@ -78,7 +78,7 @@ func TestPlanningPhaseAdmitsResearchAndRefusesWriters(t *testing.T) {
 		if _, ok := refused[name]; ok {
 			refused[name] = true
 			if !got.Blocked {
-				t.Errorf("writer %q ran during planning", name)
+				t.Errorf("side-effecting tool %q ran during planning", name)
 			}
 		}
 	}

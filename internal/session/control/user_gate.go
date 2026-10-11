@@ -39,11 +39,20 @@ func (c *Controller) noticeUserGate() {
 	}
 }
 
-// liftUserGatedGoal resumes a Goal paused on a gate, the starting turn being
-// the message it waits for. Other pause causes stay the user's to lift.
+// liftUserGatedGoal resumes a Goal waiting on the user, the starting turn being
+// the message it waits for: one gated by await_user, or one the model or the
+// evaluator reported blocked. Other pause causes stay the user's to lift.
 func (c *Controller) liftUserGatedGoal(synthetic bool) {
-	if synthetic || c.goals.runtimeView().StopCause != stopCauseUserGate {
+	if synthetic || !c.goals.awaitsUser() {
 		return
 	}
 	c.ResumeGoal()
+}
+
+// awaitsUser reports a Goal that cannot go on without something from the user:
+// gated by await_user, or blocked by a report with no pause cause of its own.
+func (g *goalMachine) awaitsUser() bool {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return g.stopCause == stopCauseUserGate || (g.status == GoalStatusBlocked && g.stopCause == "")
 }

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ClipboardEvent } from "react";
 import { t } from "../i18n";
+import { systemLabel } from "./osname";
 import { tx } from "../i18n/rich";
 import { FEEDBACK_CATEGORIES, FEEDBACK_CODE, FEEDBACK_REPO_ISSUES, type FeedbackCategory, type FeedbackEnv, type FeedbackReceipt } from "../port/feedback";
 import type { AgentPort } from "../port/port";
@@ -371,7 +372,7 @@ export function FeedbackForm({ port, onMine, onClose, onFile }: Props) {
             <dt>{t("版本")}</dt>
             <dd>{env.env.version}{env.env.commit ? ` (${env.env.commit})` : ""}</dd>
             <dt>{t("系统")}</dt>
-            <dd>{[env.env.os, env.env.osVersion, env.env.arch].filter(Boolean).join(" ")}</dd>
+            <dd>{systemLabel(env.env.os, env.env.osVersion, env.env.arch)}</dd>
             <dt>{t("入口")}</dt>
             <dd>{env.env.surface}</dd>
             <dt>{t("语言")}</dt>

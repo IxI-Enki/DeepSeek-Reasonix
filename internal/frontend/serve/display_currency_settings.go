@@ -28,6 +28,10 @@ func (s *Server) saveDisplayCurrency(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.ctl().SaveDisplayCurrency(body.Mode); err != nil {
+		if errors.Is(err, control.ErrDisplayCurrencyRetired) {
+			refuse(w, http.StatusConflict, "display_currency.runtime_changed", err.Error(), nil)
+			return
+		}
 		if errors.Is(err, control.ErrDisplayCurrencyInvalid) {
 			saveFailed(w, http.StatusBadRequest, "display_currency.invalid", err)
 			return

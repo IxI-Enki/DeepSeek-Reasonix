@@ -15,14 +15,16 @@ import { AskCard } from "./cards/AskCard";
 import { ElicitCard } from "./cards/ElicitCard";
 import { SayCard, type ReplyActions } from "./cards/SayCard";
 import { CompactionCard } from "./cards/CompactionCard";
-import { ReceiptCard } from "./cards/ReceiptCard";
+import { WorkedLine } from "./cards/WorkedLine";
 import { ReadsCard } from "./cards/ReadsCard";
 import { UserCard } from "./cards/UserCard";
 import { NoticeCard } from "./cards/NoticeCard";
 import { RememberCard } from "./cards/RememberCard";
 import { ExtensionCard } from "./cards/ExtensionCard";
 import { toolChangedFile, toolFailed } from "./cards/outcome";
-import { drawn, transcriptRows } from "./turnrows";
+import { drawn, foldStats, repeatedSpeakers, sameMembers, transcriptRows, type Shown } from "./turnrows";
+import { ReceiptSlot } from "./ReceiptSlot";
+import { WorkFold } from "./WorkFold";
 import { opensTurn, useBlocks } from "./blocks";
 import { Rail, type RailMark } from "./Rail";
 import { StudioIcon } from "./StudioIcon";
@@ -69,6 +71,8 @@ interface Props {
   needsProject: boolean;
   onOpenProject: () => void;
   onKeepHere: () => void;
+  foldWork?: boolean;
+  turnRunning?: boolean;
   checkpoints: Map<string, Checkpoint>;
   onPrepareRewind: (turn: number, scope: RewindScope) => Promise<RewindPlan>;
   onPrepareFileRevert: (path: string) => Promise<RewindPlan>;
@@ -82,7 +86,7 @@ interface Props {
   onEntered: (ids: string[]) => void;
 }
 
-export function Transcript({ items, port, entering, onEntered, revision, waiting, scroll, hidden, onPinned, jump, focus, find, query, onApprove, onFullAccess, onPlan, onAnswer, onForget, onExtInvoke, onExtSubmit, reply, onResend, takeovers = {}, checkpoints, onPrepareRewind, onCommitRewind, onUndoRewind, onPrepareFileRevert, onCommitFileRevert, needsProject, onOpenProject, onKeepHere }: Props) {
+export function Transcript({ items, port, entering, onEntered, revision, waiting, scroll, hidden, onPinned, jump, focus, find, query, onApprove, onFullAccess, onPlan, onAnswer, onForget, onExtInvoke, onExtSubmit, reply, onResend, takeovers = {}, checkpoints, onPrepareRewind, onCommitRewind, onUndoRewind, onPrepareFileRevert, onCommitFileRevert, needsProject, onOpenProject, onKeepHere, foldWork = false, turnRunning = false }: Props) {
   // A block the selection touches must not leave the DOM. Unmounting the node a
   // selection is anchored to makes the browser remap that selection onto
   // whatever is still mounted — which reads as "I selected up there and the
@@ -434,8 +438,14 @@ export function Transcript({ items, port, entering, onEntered, revision, waiting
     if (entering.length > 0) onEntered(entering);
   }, [entering, onEntered]);
   const owed = useMemo(() => new Set(entering), [entering]);
+  const kept = useRef<Set<string>>(new Set());
+  const echoes = useMemo(() => {
+    const next = repeatedSpeakers(items);
+    if (!sameMembers(kept.current, next)) kept.current = next;
+    return kept.current;
+  }, [items]);
 
-  const rowProps = { owed, port, onApprove, onFullAccess, onPlan, onAnswer, onForget, onExtInvoke, takeovers, onExtSubmit, onPrepareRewind, onCommitRewind, onUndoRewind, onPrepareFileRevert, onCommitFileRevert, reply, onResend };
+  const rowProps = { owed, echoes, port, onApprove, onFullAccess, onPlan, onAnswer, onForget, onExtInvoke, takeovers, onExtSubmit, onPrepareRewind, onCommitRewind, onUndoRewind, onPrepareFileRevert, onCommitFileRevert, reply, onResend };
 
   // What you said, and where it sits. Derived from the same blocks the
   // transcript renders, so a mark always knows which block holds it — that is
@@ -484,6 +494,8 @@ export function Transcript({ items, port, entering, onEntered, revision, waiting
             // mounts without waiting for the observer's first callback.
             eager={i === blocks.length - 1}
             keep={held.has(i)}
+            foldWork={foldWork}
+            tail={turnRunning && i === blocks.length - 1}
             {...rowProps}
           />
         ))}
@@ -505,6 +517,8 @@ const Block = memo(function Block({
   watch,
   eager,
   keep,
+  foldWork,
+  tail,
   ...rowProps
 }: {
   items: Item[];
@@ -514,6 +528,10 @@ const Block = memo(function Block({
   // The selection reaches into this block, so it stays mounted however far
   // off-screen it scrolls.
   keep: boolean;
+  // Whether a settled turn's work is folded under one line (the kernel's [ui] fold_turn_work).
+  foldWork: boolean;
+  // This block holds the end of a turn that is still being worked on, which stays open.
+  tail: boolean;
 } & RowHandlers) {
   const box = useRef<HTMLDivElement>(null);
   const [near, setNear] = useState(eager);
@@ -529,10 +547,34 @@ const Block = memo(function Block({
 
   // Tool traffic is evidence for the answer, not a stack of equally important
   // messages; transcriptRows folds it and keeps each sentence above its own.
-  const rows = transcriptRows(items);
+  const rows = transcriptRows(items, foldWork ? { running: tail } : undefined);
   // Which runs of work are open, held here so re-hosting one under its sentence
   // does not close it.
   const [opened, setOpened] = useState<Record<string, boolean>>({});
+  const drawRows = (list: Shown[]): ReactNode[] => list.map((row) => {
+    if ("fold" in row) {
+      const key = `fold:${row.id}`;
+      const stats = foldStats(row.fold, (item) => (item.t === "tool" ? Number(toolFailed(item.tool)) : item.t === "reads" ? item.tools.filter(toolFailed).length : 0));
+      return (
+        <WorkFold key={key} open={opened[key] ?? false} onOpen={(next) => setOpened((all) => (all[key] === next ? all : { ...all, [key]: next }))} {...stats}>
+          {drawRows(row.fold)}
+        </WorkFold>
+      );
+    }
+    return "item" in row ? (
+      <Fragment key={row.item.id}>
+        {opensTurn(row.item) && <hr className="turn-rule" />}
+        <Row
+          it={row.item}
+          {...rowProps}
+          cp={checkpoints.get(row.item.id)}
+          afterAnswer={row.activity ? <ActivityGroup items={row.activity} checkpoints={checkpoints} opened={opened} onOpened={setOpened} {...rowProps} /> : undefined}
+        />
+      </Fragment>
+    ) : (
+      <ActivityGroup key={`activity:${row.activity[0].id}`} items={row.activity} checkpoints={checkpoints} opened={opened} onOpened={setOpened} {...rowProps} />
+    );
+  });
 
   return (
     <div
@@ -540,25 +582,14 @@ const Block = memo(function Block({
       ref={box}
       style={near || keep ? undefined : { height: `${tall.current || items.length * 96}px` }}
     >
-      {(near || keep) && rows.map((row) => "item" in row ? (
-        <Fragment key={row.item.id}>
-          {opensTurn(row.item) && <hr className="turn-rule" />}
-          <Row
-            it={row.item}
-            {...rowProps}
-            cp={checkpoints.get(row.item.id)}
-            afterAnswer={row.activity ? <ActivityGroup items={row.activity} checkpoints={checkpoints} opened={opened} onOpened={setOpened} {...rowProps} /> : undefined}
-          />
-        </Fragment>
-      ) : (
-        <ActivityGroup key={`activity:${row.activity[0].id}`} items={row.activity} checkpoints={checkpoints} opened={opened} onOpened={setOpened} {...rowProps} />
-      ))}
+      {(near || keep) && drawRows(rows)}
     </div>
   );
 });
 
 interface RowHandlers {
   owed: Set<string>;
+  echoes: Set<string>;
   port: Props["port"];
   onApprove: Props["onApprove"];
   onFullAccess: Props["onFullAccess"];
@@ -635,6 +666,7 @@ const Row = memo(function Row({
   it,
   port,
   owed,
+  echoes,
   onApprove,
   onFullAccess,
   onPlan,
@@ -682,7 +714,7 @@ const Row = memo(function Row({
       // model. Gating the card on text meant all of it stayed invisible and
       // then landed at once. An empty card is still not a message, so a turn
       // that produced neither draws nothing.
-      return drawn(it) || afterAnswer ? <SayCard item={it} afterAnswer={afterAnswer} reply={reply} /> : null;
+      return drawn(it) || afterAnswer ? <SayCard item={it} afterAnswer={afterAnswer} reply={reply} quiet={echoes.has(it.id)} /> : null;
     case "tool":
       // The ask tool also raises ask_request, which carries the id /answer
       // needs. Drawing the tool call too put two copies of the same question on
@@ -722,7 +754,9 @@ const Row = memo(function Row({
     case "remember":
       return <RememberCard m={it.m} forgotten={it.forgotten} onForget={(name) => onForget(it.id, name)} />;
     case "receipt":
-      return <ReceiptCard r={it.r} />;
+      return <ReceiptSlot r={it.r} />;
+    case "worked":
+      return <WorkedLine ms={it.ms} />;
     case "extension":
       return <ExtensionCard ext={it.ext} onInvoke={onExtInvoke} onSubmit={onExtSubmit} />;
     case "notice":
@@ -762,3 +796,4 @@ function Hero({ needsProject, onOpen, onKeep }: HeroProps) {
     </div>
   );
 }
+

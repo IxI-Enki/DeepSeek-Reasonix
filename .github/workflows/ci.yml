@@ -26,7 +26,9 @@ jobs:
   # merges. Gated jobs skip only on an explicit `false` output: wrapped in
   # `always()`, a failed `changes` job (or a missing output) makes them run
   # the full matrix instead of silently passing required checks as skipped.
-  # Pushes to main-v2 always run everything.
+  # Pushes to main-v2 always run everything. Pull requests run the macOS and
+  # Windows legs only when `platform` is not 'false'; the rule lives in
+  # scripts/ci-platform-scope.sh and fails toward running them.
   changes:
     runs-on: ubuntu-latest
     outputs:
@@ -34,13 +36,14 @@ jobs:
       desktop: ${{ steps.filter.outputs.desktop }}
       sdk: ${{ steps.filter.outputs.sdk }}
       scripts: ${{ steps.filter.outputs.scripts }}
+      platform: ${{ steps.filter.outputs.platform }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
       - id: filter
         run: |
-          code=true; desktop=true; sdk=true; scripts=true
+          code=true; desktop=true; sdk=true; scripts=true; platform=true
           base=""
           if [ "${{ github.event_name }}" = "pull_request" ]; then
             base="${{ github.event.pull_request.base.sha }}"
@@ -48,7 +51,7 @@ jobs:
             base="${{ github.event.before }}"
           fi
           if [ -n "$base" ] && git cat-file -e "$base^{commit}" 2>/dev/null; then
-            files=$(git diff --name-only "$base" HEAD)
+            files=$(git diff --name-only --no-renames "$base" HEAD)
             if [ -n "$files" ]; then
               code=false; desktop=false; sdk=false; scripts=false
               # Root-module CI: desktop/ is a separate module, so only the
@@ -63,9 +66,10 @@ jobs:
               if echo "$files" | grep -qE '^(sdk/|internal/ext/extension/)'; then sdk=true; fi
               # The release-note tests render every committed Studio note; npm/ holds the publish tests.
               if echo "$files" | grep -qE '^(scripts/|npm/|release-notes/studio/|\.github/workflows/release-studio\.yml$)'; then scripts=true; fi
+              platform=$(git diff -z --name-only --no-renames "$base" HEAD | bash scripts/ci-platform-scope.sh)
             fi
           fi
-          { echo "code=$code"; echo "desktop=$desktop"; echo "sdk=$sdk"; echo "scripts=$scripts"; } >> "$GITHUB_OUTPUT"
+          { echo "code=$code"; echo "desktop=$desktop"; echo "sdk=$sdk"; echo "scripts=$scripts"; echo "platform=$platform"; } >> "$GITHUB_OUTPUT"
 
   release-notes-scripts:
     needs: changes
@@ -77,14 +81,14 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: "22"
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version-file: go.mod
           cache: true
-      - run: node --test scripts/cli-archive-build.test.mjs scripts/release-credits.test.mjs scripts/update-contributors.test.mjs scripts/update-acknowledgments.test.mjs scripts/markdown-refs.test.mjs scripts/studio-release-notes.test.mjs scripts/publish-cli-pointer.test.mjs scripts/studio-release-flags.test.mjs scripts/studio-notes-publish.test.mjs scripts/brew-cask-guard.test.mjs scripts/feedback-sync.test.mjs npm/publish.test.mjs
+      - run: node --test scripts/ci-platform-scope.test.mjs scripts/cli-archive-build.test.mjs scripts/release-credits.test.mjs scripts/update-contributors.test.mjs scripts/update-acknowledgments.test.mjs scripts/markdown-refs.test.mjs scripts/studio-release-notes.test.mjs scripts/publish-cli-pointer.test.mjs scripts/studio-release-flags.test.mjs scripts/studio-notes-publish.test.mjs scripts/brew-cask-guard.test.mjs scripts/feedback-sync.test.mjs npm/publish.test.mjs
 
   # The ruleset requires the per-OS check names (test (ubuntu-latest) etc.).
   # A matrix job skipped at job level reports no per-leg checks at all, so
@@ -93,6 +97,9 @@ jobs:
   # detector reports the diff is unrelated, every step skips and each leg
   # reports success in seconds. `always()` also keeps the legs alive when
   # the changes job itself fails (fail-open: an empty output != 'false').
+  # A pull request with no platform-relevant change moves the macOS and
+  # Windows legs onto an ubuntu runner with every step skipped: the check
+  # names the ruleset requires still report, without a scarce runner.
   test:
     needs: changes
     if: always()
@@ -100,9 +107,9 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-    runs-on: ${{ matrix.os }}
+    runs-on: ${{ github.event_name == 'pull_request' && needs.changes.outputs.platform == 'false' && 'ubuntu-latest' || matrix.os }}
     env:
-      RUN_STEPS: ${{ github.event_name != 'pull_request' || needs.changes.outputs.code != 'false' }}
+      RUN_STEPS: ${{ github.event_name != 'pull_request' || (needs.changes.outputs.code != 'false' && (matrix.os == 'ubuntu-latest' || needs.changes.outputs.platform != 'false')) }}
     steps:
       - if: env.RUN_STEPS == 'true'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -302,9 +309,9 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-    runs-on: ${{ matrix.os }}
+    runs-on: ${{ github.event_name == 'pull_request' && needs.changes.outputs.platform == 'false' && 'ubuntu-latest' || matrix.os }}
     env:
-      RUN_STEPS: ${{ github.event_name != 'pull_request' || needs.changes.outputs.sdk != 'false' }}
+      RUN_STEPS: ${{ github.event_name != 'pull_request' || (needs.changes.outputs.sdk != 'false' && (matrix.os == 'ubuntu-latest' || needs.changes.outputs.platform != 'false')) }}
     defaults:
       run:
         working-directory: sdk/go
@@ -409,7 +416,7 @@ jobs:
   # compile it against a real macOS toolchain.
   desktop-macos:
     needs: changes
-    if: always() && (github.event_name != 'pull_request' || needs.changes.outputs.desktop != 'false')
+    if: always() && (github.event_name != 'pull_request' || (needs.changes.outputs.desktop != 'false' && needs.changes.outputs.platform != 'false'))
     runs-on: macos-latest
     defaults:
       run:
@@ -437,7 +444,7 @@ jobs:
   # (//go:build windows), so the ubuntu leg above never compiles them.
   desktop-windows:
     needs: changes
-    if: always() && (github.event_name != 'pull_request' || needs.changes.outputs.desktop != 'false')
+    if: always() && (github.event_name != 'pull_request' || (needs.changes.outputs.desktop != 'false' && needs.changes.outputs.platform != 'false'))
     runs-on: windows-latest
     defaults:
       run:
@@ -547,7 +554,7 @@ jobs:
         run: go test -coverprofile=coverage.out -covermode=atomic ./...
 
       - name: upload coverage
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: coverage-report
           path: coverage.out

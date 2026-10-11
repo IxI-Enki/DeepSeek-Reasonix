@@ -484,7 +484,7 @@ body { background: var(--page) !important; }
 .chrome {
   width: auto;
   margin-left: calc(var(--nav-w) + var(--rail-w));
-  padding: 0 18px 0 20px;
+  padding: 0 18px 0 max(20px, calc(var(--lights-w) + 50px - var(--nav-w) - var(--rail-w)));
   gap: 11px;
   background: var(--surface) !important;
   border-bottom: 1px solid var(--hair);
@@ -501,8 +501,11 @@ body { background: var(--page) !important; }
 .app { --srail-w: 36px; }
 
 /* Prototype header */
-.chrome .studio-menu { width: 30px; margin-left: -6px; }
-.chrome .crumb { gap: 8px; color: var(--faint); font-size: 12px; }
+.studio-menu { position: fixed; z-index: 40; left: calc(var(--lights-w) + 10px); top: calc((var(--chrome-h) - 30px) / 2); width: 30px; height: 30px; display: grid; place-items: center; padding: 0; border: 1px solid transparent; border-radius: 7px; background: transparent; color: var(--faint); cursor: pointer; }
+.studio-menu svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.25; stroke-linecap: round; }
+.studio-menu:hover { color: var(--text); background: var(--float); border-color: var(--border); }
+[data-titlebar="app"] .studio-menu { -webkit-app-region: no-drag; }
+.chrome .crumb { gap: 8px; color: var(--faint); font-size: 12px; overflow: hidden; }
 .chrome .crumb-folder { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.25; }
 .chrome .crumb-proj { color: var(--muted); font-weight: 600; }
 .chrome .crumbsep { color: #555852; }
@@ -590,9 +593,6 @@ body { background: var(--page) !important; }
 .studio-brand small { color: var(--faint); font-size: 9px; line-height: 9px; letter-spacing: .08em; }
 .studio-brand b,
 .studio-brand small { display: block; }
-.studio-collapse { margin-left: auto; width: 28px; height: 28px; display: grid; place-items: center; border: 0; border-radius: 6px; background: transparent; color: var(--faint); cursor: pointer; }
-.studio-collapse .studio-icon { width: 15px; height: 15px; stroke-width: 1.55; }
-.studio-collapse:hover { color: var(--text); background: var(--overlay); }
 .studio-new-task {
   height: 34px;
   padding: 0 10px;
@@ -796,6 +796,8 @@ body { background: var(--page) !important; }
   color: var(--accent-fg); font: 650 10px/1 var(--ui);
 }
 .flow .call[data-k="say"] > .g .sym svg { display: none; }
+.flow .call[data-k="say"][data-quiet] > .g,
+.flow .call[data-k="say"][data-quiet] > .c > .hl { display: none; }
 .flow .call[data-k="say"] > .c { padding: 0 0 var(--y-say); }
 .flow .call[data-k="say"] > .c > .hl {
   min-height: 25px; margin-bottom: 10px; padding-left: 29px; align-items: center;
@@ -859,6 +861,7 @@ body { background: var(--page) !important; }
 .flow .call[data-k="me"]:hover { background: transparent; border-color: transparent; }
 .flow .call[data-k="me"]::before { display: none; }
 .flow .call[data-k="me"] > .c { width: auto; max-width: 70%; padding: 0; }
+.flow .call[data-k="me"] > .c:has(.reask) { width: 100%; max-width: 100%; }
 .flow .call[data-k="me"] .user-hl { min-height: 0; margin: 0 3px 4px; justify-content: flex-end; flex-wrap: nowrap; contain: inline-size; }
 .flow .user-acts { display: flex; align-items: center; justify-content: flex-end; gap: 4px; margin-top: 4px; min-height: 26px; contain: inline-size; opacity: 0; transition: opacity var(--m-line); }
 .flow .call > .c:hover .user-acts,
@@ -1550,7 +1553,6 @@ body { background: var(--page) !important; }
 :root[data-theme="light"] .studio-brand-mark { background: var(--accent); color: var(--accent-fg); }
 :root[data-theme="light"] .studio-new-task { border-color: transparent; font-weight: 590; }
 :root[data-theme="light"] .studio-search:hover,
-:root[data-theme="light"] .studio-collapse:hover,
 :root[data-theme="light"] .studio-settings:hover,
 :root[data-theme="light"] .studio-wallet:hover { background: var(--hair); color: var(--text); }
 :root[data-theme="light"] .rail .machrow { color: var(--text); }
@@ -2214,7 +2216,7 @@ body { font-size: 14px; line-height: 1.75; }
   border-radius: 999px;
   background: transparent;
   box-shadow: none;
-  flex: 1 0 172px;
+  flex: 1 1 172px;
   justify-content: flex-end;
 }
 .studio-mode-control,
@@ -2982,7 +2984,6 @@ body { font-size: 14px; line-height: 1.75; }
 .chrome .crumb b { color: var(--text); }
 .chrome .crumbsep,
 .chrome .top-action,
-.studio-collapse,
 .studio-settings { color: var(--ghost); }
 .chrome .badge,
 .chrome .top-action[aria-pressed="true"] { background: var(--overlay); color: var(--muted); border-color: var(--border); }
@@ -2995,7 +2996,6 @@ body { font-size: 14px; line-height: 1.75; }
 .studio-brand-word b { color: var(--text); }
 .studio-brand small,
 .studio-brand-word small { color: var(--faint); }
-.studio-collapse:hover,
 .studio-settings:hover,
 .studio-search:hover,
 .studio-quicknav button:hover { color: var(--text); background: var(--overlay); }
@@ -3496,6 +3496,7 @@ body { font-size: 14px; line-height: 1.75; }
 .run-analysis-head b { font-size: 16px; letter-spacing: -.015em; }
 .run-analysis-head small,
 .run-section-head span { color: var(--faint); font: var(--w-reg) 11px/1.4 var(--mono); }
+.run-section-note { margin: -4px 0 10px; color: var(--faint); font: var(--w-reg) 11px/1.55 var(--ui); }
 .run-live { display: inline-flex; align-items: center; gap: 7px; color: var(--net); font: var(--w-reg) 11px var(--mono); }
 .run-live i { width: 6px; height: 6px; border-radius: 50%; background: currentColor; box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 12%, transparent); }
 .run-analysis-actions { display: flex; align-items: center; gap: 9px; }
@@ -4044,18 +4045,12 @@ body { font-size: 14px; line-height: 1.75; }
 /* The brand rail and conversation chrome are one application title bar. Keep
    their optical centres on the same 54px row instead of letting sidebar
    content padding push the wordmark a full control-height lower. */
-.studio-rail-head { padding-top: 0; }
+.studio-rail-head { padding-top: 0; padding-left: calc(22px + max(0px, 44px - var(--nav-w))); }
 .studio-brand {
   height: var(--chrome-h);
   padding-block: 0;
   margin-bottom: 12px;
 }
-.studio-collapse {
-  width: 30px;
-  height: 30px;
-  padding: 0;
-}
-.chrome .studio-menu,
 .chrome .thbtn,
 .chrome .top-action { min-height: 30px; }
 .chrome .crumb,

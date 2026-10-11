@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 
 	"reasonix/internal/runtime/taskmonitor"
@@ -11,8 +12,13 @@ import (
 
 // hostOwnedPath reports whether path lies in the task-snapshot store, the host's
 // own path convention. It de-noises the receipt only: any writer can create files
-// there, and a symlink anywhere on the way means the path leads elsewhere.
+// there, and a link of any kind on the way (symlink or Windows junction) or a
+// ".." in the path as given means it may lead elsewhere. A missing component
+// cannot be a link, so only the existing prefix is inspected.
 func hostOwnedPath(root, path string) bool {
+	if slices.Contains(strings.FieldsFunc(path, func(r rune) bool { return r == '/' || r == filepath.Separator }), "..") {
+		return false
+	}
 	if !filepath.IsAbs(path) {
 		path = filepath.Join(root, path)
 	}
@@ -27,7 +33,7 @@ func hostOwnedPath(root, path string) bool {
 		if err != nil {
 			return os.IsNotExist(err)
 		}
-		if info.Mode()&os.ModeSymlink != 0 {
+		if info.Mode()&(os.ModeSymlink|os.ModeIrregular) != 0 {
 			return false
 		}
 	}

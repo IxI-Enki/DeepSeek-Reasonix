@@ -145,8 +145,8 @@ describe("what counts as an input a person performs", () => {
     expect(c.roots.map((r) => r.kind)).toEqual(["dom-event"]);
   });
 
-  it("leaves the environment's own events out", () => {
-    const c = only(`export function A() { window.addEventListener("resize", () => {}); return null; }`);
+  it.each(["resize", "pageshow"])("leaves the environment's %s event out", (event) => {
+    const c = only(`export function A() { window.addEventListener("${event}", () => {}); return null; }`);
     expect(c.roots).toEqual([]);
     expect(c.nonUser.map((n) => n.why)).toEqual(["RUNTIME_EVENT"]);
   });

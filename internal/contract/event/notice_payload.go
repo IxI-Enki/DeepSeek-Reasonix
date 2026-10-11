@@ -72,6 +72,10 @@ type JobNotice struct {
 	Label string `json:"label,omitempty"`
 	// Error is the job function's own error text, set on a failure only.
 	Error string `json:"error,omitempty"`
+	// ExitCode and Signal say how a failed process ended, when the producer
+	// knew: Signal is the signal number that ended it, zero when none did.
+	ExitCode *int `json:"exitCode,omitempty"`
+	Signal   int  `json:"signal,omitempty"`
 }
 
 // Encode renders the payload as the notice's Detail.

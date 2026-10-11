@@ -14,7 +14,6 @@ import { clearDraftForSession } from "./drafts";
 // The same ceiling the local column uses. A machine worked on for months holds
 // thousands of conversations, and drawing them all is what put 98k nodes in a
 // sidebar — the reader is looking at the recent end either way.
-const SHOWN = 30;
 
 interface Props {
   hub: HubPort;
@@ -141,8 +140,6 @@ function RemoteHostsView({ hub, hosts, runtimes, active, onOpen, onFocus, reload
   const [shut, setShut] = useState<Set<string>>(new Set());
   const needle = useRailQuery();
   const hit = makeHit(needle);
-  // Workspaces the reader asked to see in full.
-  const [whole, setWhole] = useState<Set<string>>(new Set());
 
   const dropSession = async (host: RemoteHost, sessionPath: string, held?: RuntimeView) => {
     setConfirm("");
@@ -339,7 +336,7 @@ function RemoteHostsView({ hub, hosts, runtimes, active, onOpen, onFocus, reload
                             会话" would be this window guessing, and guessing
                             zero about a project worked in for months. */}
                         {tree && ws.sessions.length > 0 ? (
-                          <span className="wsmeta">{t("{n} 会话", { n: ws.sessions.length })}</span>
+                          <span className="wsmeta">{ws.total !== undefined && ws.total > ws.sessions.length ? t("{n} / {total} 会话", { n: ws.sessions.length, total: ws.total }) : t("{n} 会话", { n: ws.sessions.length })}</span>
                         ) : null}
                         <span className="wsacts">
                           {folded && <UnreadCount n={ws.sessions.filter((x) => x.unread).length} />}
@@ -381,7 +378,7 @@ function RemoteHostsView({ hub, hosts, runtimes, active, onOpen, onFocus, reload
                       </div>
                       {!folded && (
                         <div className="kids">
-                          {(whole.has(key) ? ws.sessions : ws.sessions.slice(0, SHOWN)).map((session) => {
+                          {ws.sessions.map((session) => {
                             // A conversation this window already drives is a
                             // pane to focus, never a second writer for one file.
                             const held = panes.find((rt) => rt.sessionPath === session.path);
@@ -434,19 +431,8 @@ function RemoteHostsView({ hub, hosts, runtimes, active, onOpen, onFocus, reload
                               </div>
                             );
                           })}
-                          {ws.sessions.length > SHOWN && !whole.has(key) && (
-                            <button
-                              className="rmtmore"
-                              onClick={() =>
-                                setWhole((held) => {
-                                  const next = new Set(held);
-                                  next.add(key);
-                                  return next;
-                                })
-                              }
-                            >
-                              {t("还有 {n} 个 · 全部显示", { n: ws.sessions.length - SHOWN })}
-                            </button>
+                          {ws.total !== undefined && ws.total > ws.sessions.length && (
+                            <small className="rmtolder">{t("还有 {n} 个较早的会话，在那台机器上查看", { n: ws.total - ws.sessions.length })}</small>
                           )}
                         </div>
                       )}

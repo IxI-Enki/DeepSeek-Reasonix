@@ -2,6 +2,7 @@ package jobs
 
 import (
 	"context"
+	"errors"
 	"io"
 	"strings"
 	"sync"
@@ -250,6 +251,35 @@ func TestKilledJobEmitsCodedNotice(t *testing.T) {
 		p, ok := event.DecodeJobNotice(ev.Detail)
 		if !ok || p.ID != j.ID || p.Label != "sleep 60" || ev.Level != event.LevelInfo || !strings.Contains(ev.Text, "killed") {
 			t.Fatalf("killed notice = %+v payload %+v", ev, p)
+		}
+	}
+}
+
+func TestFailedJobNoticeCarriesTheTypedExit(t *testing.T) {
+	sink := &recordingSink{}
+	m := NewManager(sink)
+	defer m.Close()
+	j := m.Start("bash", "make", func(context.Context, io.Writer) (string, error) {
+		return "", &ExitError{Code: -1, Signal: 9, Err: errors.New("signal: killed")}
+	})
+	<-j.done
+	waitFor(t, func() bool {
+		sink.mu.Lock()
+		defer sink.mu.Unlock()
+		for _, ev := range sink.events {
+			if ev.Code == event.NoticeCodeJobFailed {
+				return true
+			}
+		}
+		return false
+	})
+	for _, ev := range sink.events {
+		if ev.Code != event.NoticeCodeJobFailed {
+			continue
+		}
+		p, ok := event.DecodeJobNotice(ev.Detail)
+		if !ok || p.ExitCode == nil || *p.ExitCode != -1 || p.Signal != 9 || p.Error != "signal: killed" {
+			t.Fatalf("payload = %+v ok=%v", p, ok)
 		}
 	}
 }

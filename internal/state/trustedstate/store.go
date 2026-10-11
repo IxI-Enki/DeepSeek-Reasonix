@@ -56,13 +56,15 @@ const (
 )
 
 // Record is one link of a stream's chain. Payload names the object the record
-// seals; Integrity is the level the record was written under.
+// seals; Refs are further objects the payload points at, sealed with it so
+// Verify can check them; Integrity is the level the record was written under.
 type Record struct {
 	Stream     string         `json:"stream"`
 	Generation uint64         `json:"generation"`
 	Parent     Digest         `json:"parent,omitempty"`
 	Kind       string         `json:"kind"`
 	Payload    Digest         `json:"payload"`
+	Refs       []Digest       `json:"refs,omitempty"`
 	Integrity  IntegrityLevel `json:"integrity"`
 	At         int64          `json:"at"`
 }
@@ -82,8 +84,12 @@ type Store struct {
 	integrity func() IntegrityLevel
 	now       func() time.Time
 
+	readFile func(string) ([]byte, error)
+	statFile func(string) (fs.FileInfo, error)
+
 	mu       sync.Mutex
 	observed map[string]Head
+	objects  objectCache
 }
 
 // Open returns the store rooted at root. integrity is asked at every write; nil
@@ -92,7 +98,7 @@ func Open(root string, integrity func() IntegrityLevel) *Store {
 	if integrity == nil {
 		integrity = func() IntegrityLevel { return TamperEvidentOnly }
 	}
-	return &Store{root: root, integrity: integrity, now: time.Now, observed: map[string]Head{}}
+	return &Store{root: root, integrity: integrity, now: time.Now, observed: map[string]Head{}, readFile: os.ReadFile, statFile: os.Stat}
 }
 
 // Root is the directory the store writes under.
@@ -111,6 +117,18 @@ func (s *Store) streamDir(stream string) (string, error) {
 // The current head is checked against what this process observed first, so a
 // rewritten history is refused rather than extended.
 func (s *Store) Append(ctx context.Context, stream, kind string, payload []byte) (Record, Digest, error) {
+	return s.AppendWithRefs(ctx, stream, kind, payload, nil)
+}
+
+// AppendWithRefs is Append for a payload that points at other objects. Each ref
+// must already be stored and intact; the record carries them, so a later Verify
+// notices one that went missing or changed.
+func (s *Store) AppendWithRefs(ctx context.Context, stream, kind string, payload []byte, refs []Digest) (Record, Digest, error) {
+	for _, ref := range refs {
+		if _, err := s.Object(ref); err != nil {
+			return Record{}, "", err
+		}
+	}
 	dir, err := s.streamDir(stream)
 	if err != nil {
 		return Record{}, "", err
@@ -139,6 +157,7 @@ func (s *Store) Append(ctx context.Context, stream, kind string, payload []byte)
 		Parent:     head.Record,
 		Kind:       kind,
 		Payload:    payloadDigest,
+		Refs:       refs,
 		Integrity:  level,
 		At:         s.now().UnixMilli(),
 	}
@@ -247,14 +266,18 @@ func (s *Store) observe(stream string, h Head) {
 }
 
 // Record reads and checks one record object.
-func (s *Store) Record(d Digest) (Record, error) {
-	data, err := s.Object(d)
+func (s *Store) Record(d Digest) (Record, error) { return decodeRecord(s.Object(d)) }
+
+// recordFromDisk is Record for a caller that must see the bytes on disk.
+func (s *Store) recordFromDisk(d Digest) (Record, error) { return decodeRecord(s.objectFromDisk(d)) }
+
+func decodeRecord(data []byte, err error) (Record, error) {
 	if err != nil {
 		return Record{}, err
 	}
 	var rec Record
 	if err := json.Unmarshal(data, &rec); err != nil {
-		return Record{}, fmt.Errorf("%w: record %s does not parse", ErrTampered, d)
+		return Record{}, fmt.Errorf("%w: record does not parse", ErrTampered)
 	}
 	return rec, nil
 }
@@ -269,15 +292,17 @@ func (s *Store) Verify(stream string) (Head, error) {
 	}
 	at := h.Record
 	for gen := h.Generation; gen > 0; gen-- {
-		rec, err := s.Record(at)
+		rec, err := s.recordFromDisk(at)
 		if err != nil {
 			return Head{}, err
 		}
 		if rec.Generation != gen || rec.Stream != stream {
 			return Head{}, fmt.Errorf("%w: stream %s record %s is out of sequence", ErrTampered, stream, at)
 		}
-		if _, err := s.Object(rec.Payload); err != nil {
-			return Head{}, err
+		for _, d := range append([]Digest{rec.Payload}, rec.Refs...) {
+			if _, err := s.objectFromDisk(d); err != nil {
+				return Head{}, err
+			}
 		}
 		at = rec.Parent
 	}

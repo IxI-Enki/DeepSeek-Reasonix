@@ -23,7 +23,7 @@ func StudioLine() Line {
 		// The Electron installer requests nothing and raises consent itself for
 		// an all-users install. Starting it elevated would put it in the
 		// consenting account, where its per-user default writes that profile.
-		Windows: WindowsLine{Installer: WindowsInstallerPerUser},
+		Windows: WindowsLine{Installer: WindowsInstallerPerUser, InstallerArgs: "--updated"},
 	}
 }
 

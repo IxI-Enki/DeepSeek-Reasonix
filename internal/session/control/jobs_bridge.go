@@ -8,21 +8,36 @@ import (
 
 	"reasonix/internal/runtime/taskmonitor"
 	"reasonix/internal/state/sessioninbox"
+	"reasonix/internal/state/sessionstore"
 	"reasonix/internal/tools/jobs"
 )
 
 // hostContinuationSource labels inbox items the runtime authored for itself.
 const hostContinuationSource = "host:background-job"
 
-// observeJobs attaches what watches the background-job table: the task-store
-// recorder, and this controller as the completion observer. The recorder
-// swallows its own failures, and resolves the session id lazily because the
-// session path is only fixed once the first turn begins.
+// borrowsJobs reports whether the job manager and write lease still belong to
+// another controller: one that adopted them is not the one they answer to until
+// TakeOverJobs, so a switch that never publishes leaves them as they were.
+func (c *Controller) borrowsJobs() bool {
+	return c.jobs != nil && c.jobs.Observed() && !c.jobs.ObservedBy(c)
+}
+
+// observeJobs binds what the job table and the write lease answer to — the
+// session identity the claim is filed under, the task-store recorder, and this
+// controller as the completion observer — unless they are still borrowed. The
+// recorder swallows its own failures, and resolves the session id lazily because
+// the session path is only fixed once the first turn begins.
 func (c *Controller) observeJobs(taskStore taskmonitor.WriteStore) {
+	if c.borrowsJobs() {
+		return
+	}
+	c.workspaceLease.SetSessionID(func() string { return sessionstore.BranchID(c.SessionPath()) })
 	if c.jobs == nil {
 		return
 	}
-	if c.workspaceRoot != "" {
+	if rec, ok := c.jobs.Recorder().(*taskmonitor.TaskRecorder); ok && rec != nil {
+		rec.Rebind(func() string { return c.parentSessionID() })
+	} else if c.workspaceRoot != "" {
 		if taskStore == nil {
 			taskStore = taskmonitor.NewFileStore(taskmonitor.StoreDir)
 		}
@@ -32,6 +47,17 @@ func (c *Controller) observeJobs(taskStore taskmonitor.WriteStore) {
 	// The manager keeps its own note either way, so a controller that cannot
 	// take an event costs nothing.
 	c.jobs.SetCompletionObserver(c)
+	c.jobs.SetActiveSessionPath(c.parentSessionID(), c.SessionPath())
+}
+
+// TakeOverJobs makes this controller the owner of the job manager and write
+// lease it adopted. A switch calls it once the replacement is published, so a
+// completion arriving before then still reaches the controller that is serving.
+func (c *Controller) TakeOverJobs() {
+	if c.jobs != nil {
+		c.jobs.SetCompletionObserver(nil)
+	}
+	c.observeJobs(c.taskStore)
 }
 
 // OnJobCompletion implements jobs.CompletionObserver: a terminal background job

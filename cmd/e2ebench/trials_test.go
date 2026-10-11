@@ -21,8 +21,8 @@ func TestTrialsLineReportsReliabilityAcrossTrials(t *testing.T) {
 	line := trialsLine(results)
 	for _, want := range []string{
 		"3 trials, 3/3 tasks complete",
-		"**pass^3** 33% (1/3)",
-		"**pass@3** 67% (2/3)",
+		"**pass^3** 33% (1/3 complete)",
+		"**pass@3** 67% (2/3 complete)",
 		"**mean pass@1** 56% (5/9)",
 		"`flaky` 2/3",
 	} {
@@ -35,15 +35,29 @@ func TestTrialsLineReportsReliabilityAcrossTrials(t *testing.T) {
 	}
 }
 
-// A trial the budget skipped is not a failure; the task is judged on the
-// trials it ran, and the line says it was not complete.
-func TestTrialsLineJudgesABudgetCutTaskOnWhatRan(t *testing.T) {
-	results := []result{
-		trialResult("a", 1, true), trialResult("a", 2, true),
-		trialResult("b", 1, true), {task: task{ID: "b"}, Trial: 2, Skipped: true},
+// pass^k is the chance all k trials pass, which a task that ran fewer has no
+// value for. A trial the budget skipped is not a failure, so such a task is
+// left out of pass^k and pass@k and named, and its trials still count toward
+// mean pass@1.
+func TestTrialsLineKeepsATaskThatRanFewerTrialsOutOfPassK(t *testing.T) {
+	for _, bPassed := range []bool{true, false} {
+		results := []result{
+			trialResult("a", 1, true), trialResult("a", 2, true),
+			trialResult("b", 1, bPassed), {task: task{ID: "b"}, Trial: 2, Skipped: true},
+		}
+		line := trialsLine(results)
+		for _, want := range []string{"1/2 tasks complete", "**pass^2** 100% (1/1 complete)", "**pass@2** 100% (1/1 complete)", "**Incomplete** (fewer than 2 trials, not in pass^2 or pass@2): `b` 1/2"} {
+			if !strings.Contains(line, want) {
+				t.Fatalf("bPassed=%v: missing %q in:\n%s", bPassed, want, line)
+			}
+		}
 	}
+}
+
+func TestTrialsLineHasNoPassKWhenNoTaskRanEveryTrial(t *testing.T) {
+	results := []result{trialResult("a", 1, true), trialResult("a", 3, true), trialResult("b", 1, true), trialResult("b", 2, true)}
 	line := trialsLine(results)
-	if !strings.Contains(line, "1/2 tasks complete") || !strings.Contains(line, "**pass^2** 100% (2/2)") {
+	if !strings.Contains(line, "**pass^3** n/a (no task ran 3 trials)") || !strings.Contains(line, "**pass@3** n/a") {
 		t.Fatalf("line = %s", line)
 	}
 }

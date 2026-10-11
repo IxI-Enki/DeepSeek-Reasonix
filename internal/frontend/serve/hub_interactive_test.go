@@ -112,7 +112,9 @@ func TestHubAdoptPublishesLocalRuntimeWithInteractiveWiring(t *testing.T) {
 func TestHubPublishLeavesRemoteRuntimesAlone(t *testing.T) {
 	h := NewHub(HubOptions{})
 	rt := &Runtime{ID: "r-remote", remote: &remoteBinding{ep: RemoteEndpoint{Addr: "127.0.0.1:1", Token: "t"}}}
-	h.publish(rt) // would panic on rt.Server if the invariant ignored Local()
+	if err := h.publish(rt); err != nil { // would panic on rt.Server if the invariant ignored Local()
+		t.Fatal(err)
+	}
 	if rt.handler == nil {
 		t.Fatal("a published remote runtime got no handler")
 	}

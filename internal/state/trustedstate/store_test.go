@@ -180,3 +180,50 @@ func copyTree(t *testing.T, from, to string) {
 		t.Fatalf("forged head not installed: %s", data)
 	}
 }
+
+func appendWithRef(t *testing.T, s *Store) Digest {
+	t.Helper()
+	ref, err := s.PutObject([]byte("referenced"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := s.AppendWithRefs(context.Background(), "ws", "bundle", []byte("p"), []Digest{ref}); err != nil {
+		t.Fatal(err)
+	}
+	return ref
+}
+
+func TestVerifyFollowsReferencedObjects(t *testing.T) {
+	for name, damage := range map[string]func(path string) error{
+		"missing": os.Remove,
+		"changed": func(path string) error { return os.WriteFile(path, []byte("other"), 0o600) },
+	} {
+		t.Run(name, func(t *testing.T) {
+			root := t.TempDir()
+			s := Open(root, nil)
+			ref := appendWithRef(t, s)
+			if _, err := Open(root, nil).Verify("ws"); err != nil {
+				t.Fatalf("intact chain: %v", err)
+			}
+			path, _ := s.objectPath(ref)
+			if err := damage(path); err != nil {
+				t.Fatal(err)
+			}
+			_, err := Open(root, nil).Verify("ws")
+			if !errors.Is(err, ErrNotFound) && !errors.Is(err, ErrTampered) {
+				t.Fatalf("Verify = %v, want a typed refusal for a %s referenced object", err, name)
+			}
+		})
+	}
+}
+
+func TestAppendRefusesAReferenceTheStoreDoesNotHold(t *testing.T) {
+	s := Open(t.TempDir(), nil)
+	_, _, err := s.AppendWithRefs(context.Background(), "ws", "bundle", []byte("p"), []Digest{DigestOf([]byte("never stored"))})
+	if !errors.Is(err, ErrNotFound) {
+		t.Fatalf("err = %v, want ErrNotFound", err)
+	}
+	if _, err := s.Head("ws"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("a refused append must leave no head, got %v", err)
+	}
+}

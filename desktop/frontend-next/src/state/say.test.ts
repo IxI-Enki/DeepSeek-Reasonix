@@ -95,3 +95,35 @@ describe("thinking time", () => {
     expect(say.thoughtMs).toBe(4200);
   });
 });
+
+describe("a line typed while the model is writing", () => {
+  const run = (events: SessionEvent[]) => events.reduce(reduce, initialState);
+  const says = (items: Item[]) => items.filter((i) => i.t === "say") as Extract<Item, { t: "say" }>[];
+
+  it("does not cut the thought that is still arriving into two blocks", () => {
+    const s = run([
+      ev("turn_started", { authoredTurn: 1, msgIndex: 1 }),
+      ev("reasoning", { text: "first half, " }),
+      ev("__user", { text: "also check the tests", pending: true }),
+      ev("reasoning", { text: "second half" }),
+      ev("text", { text: "answer" }),
+    ]);
+    const blocks = says(s.items);
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0].reasoning).toBe("first half, second half");
+    expect(blocks[0].text).toBe("answer");
+    expect(s.items.map((i) => i.t)).toEqual(["say", "user"]);
+  });
+
+  it("still starts a new message after the line has been delivered and the earlier one settled", () => {
+    const s = run([
+      ev("turn_started", { authoredTurn: 1, msgIndex: 1 }),
+      ev("reasoning", { text: "before" }),
+      ev("message", { text: "", reasoning: "before" }),
+      ev("__user", { text: "steer me", pending: true }),
+      ev("steer", { text: "steer me" }),
+      ev("reasoning", { text: "after" }),
+    ]);
+    expect(says(s.items)).toHaveLength(2);
+  });
+});

@@ -99,7 +99,13 @@ model = "x"
 
 	var mu sync.Mutex
 	liveErr := map[string]string{}
+	var failedNotice string
 	sink := event.FuncSink(func(e event.Event) {
+		if e.Kind == event.Notice && e.Code == event.NoticeCodeJobFailed {
+			mu.Lock()
+			failedNotice = e.Detail
+			mu.Unlock()
+		}
 		if e.Kind == event.ToolResult {
 			mu.Lock()
 			liveErr[e.Tool.ID] = e.Tool.Err
@@ -134,6 +140,13 @@ model = "x"
 	mu.Unlock()
 	if !strings.Contains(waitErr, "background job failed") || readErr != "" {
 		t.Fatalf("live Err: wait %q, read %q; want only the wait failed", waitErr, readErr)
+	}
+
+	mu.Lock()
+	notice, ok := event.DecodeJobNotice(failedNotice)
+	mu.Unlock()
+	if !ok || notice.ExitCode == nil || *notice.ExitCode != 3 || notice.Signal != 0 {
+		t.Fatalf("failed-job notice payload = %+v (ok=%v), want the typed exit code 3", notice, ok)
 	}
 
 	loaded, err := sessionstore.LoadSession(ctrl.SessionPath())

@@ -83,7 +83,7 @@ func (t *Tool) applySkillRoot(req request, act *action) error {
 			}
 		}
 		if registeredPath == "" {
-			act.Warnings = append(act.Warnings, fmt.Sprintf("skill %q registered from %s is not selected in this workspace; current selection is %s", name, act.Source, sk.Path))
+			act.Warnings = append(act.Warnings, unselectedSkillWarning(name, act.Source, sk.Path))
 			continue
 		}
 		act.Discoverable = true
@@ -126,7 +126,11 @@ func (t *Tool) applyCopySkill(req request, act *action) error {
 		}
 	}
 	if act.skill.IsDir {
-		if err := copyDir(act.skill.SourcePath, targetDir, maxSkillCopyBytes); err != nil {
+		source, err := act.copySource(act.skill.SourcePath)
+		if err != nil {
+			return err
+		}
+		if err := copyDir(source, targetDir, maxSkillCopyBytes, act.resolvedSource); err != nil {
 			return err
 		}
 	} else {

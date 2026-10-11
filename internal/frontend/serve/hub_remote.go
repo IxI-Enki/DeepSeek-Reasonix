@@ -362,8 +362,7 @@ func (h *Hub) OpenRemote(ep RemoteEndpoint, release func()) (*Runtime, error) {
 		Root:   ep.Workspace,
 		remote: &remoteBinding{ep: ep, release: release},
 	}
-	h.publish(rt)
-	return rt, nil
+	return rt, h.publish(rt)
 }
 
 // Remote reports the endpoint a proxied pane is bound to, so a host that has

@@ -37,6 +37,15 @@ func NewTaskRecorder(store WriteStore, projectDir string, sessionIDFn func() str
 	return &TaskRecorder{store: store, projectDir: projectDir, sessionIDFn: sessionIDFn, monitorIDs: make(map[string]string), heartbeats: make(map[string]context.CancelFunc), runtimeOwnerID: newRuntimeOwnerID()}
 }
 
+// Rebind points the recorder at another controller's session, keeping the jobs
+// it already tracks: their heartbeats and terminal records stay with the one
+// recorder that started them.
+func (r *TaskRecorder) Rebind(sessionIDFn func() string) {
+	r.mu.Lock()
+	r.sessionIDFn = sessionIDFn
+	r.mu.Unlock()
+}
+
 const (
 	runtimeLeaseTTL       = 30 * time.Second
 	runtimeHeartbeatEvery = 5 * time.Second
@@ -136,8 +145,11 @@ func (r *TaskRecorder) RecordStart(id, kind, label string) {
 	ctx := context.Background()
 	now := timeNow()
 	sessionID := ""
-	if r.sessionIDFn != nil {
-		sessionID = r.sessionIDFn()
+	r.mu.Lock()
+	fn := r.sessionIDFn
+	r.mu.Unlock()
+	if fn != nil {
+		sessionID = fn()
 	}
 	monitorID := monitorTaskID(sessionID, id)
 	if sessionID == "" {

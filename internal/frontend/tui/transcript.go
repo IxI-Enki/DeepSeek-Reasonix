@@ -19,6 +19,8 @@ const (
 	ItemNotice
 	ItemCompaction
 	ItemReceipt
+	// ItemWorked is how long the turn ran, kept after the answer it closed.
+	ItemWorked
 	// ItemUsage is what one model request cost.
 	ItemUsage
 )
@@ -27,6 +29,9 @@ const (
 type Item struct {
 	ID   int
 	Kind ItemKind
+
+	// ReceiptLine is set on an ItemReceipt drawn as one line.
+	ReceiptLine bool
 
 	// ItemUser. Pending is input the kernel has not taken into a turn yet;
 	// Steer is input a running turn read at a tool boundary. MsgIndex is the
@@ -69,6 +74,7 @@ type Item struct {
 	Compaction *eventwire.Compaction
 	Receipt    *eventwire.CompletionReceipt
 	Usage      *eventwire.Usage
+	WorkedMs   int64 // ItemWorked
 }
 
 // outputFold is how much of a finished shell call's output, or of an answer's
@@ -98,9 +104,11 @@ const (
 // a conversation reads the same in both. Nothing on the wire echoes what the
 // user typed: the client adds its own row (AddUser).
 type Transcript struct {
-	Items    []Item
-	Running  bool
-	Terminal Terminal
+	Items []Item
+	// ReceiptLine draws a delivery receipt as at most one line, rather than the card.
+	ReceiptLine bool
+	Running     bool
+	Terminal    Terminal
 	// EndReason is the kernel's account of a turn that did not complete.
 	EndReason string
 	Usage     *eventwire.Usage
@@ -261,9 +269,18 @@ func (t *Transcript) Apply(ev eventwire.Event) {
 		t.sealSays()
 		t.sealTools(ev.Err != "")
 		t.sealPrompts()
+		t.addWorked(ev.WorkDurationMs)
 		if ev.Receipt != nil && ev.Receipt.SaysSomething {
-			t.Items = append(t.Items, Item{ID: t.id(), Kind: ItemReceipt, Receipt: ev.Receipt})
+			t.Items = append(t.Items, Item{ID: t.id(), Kind: ItemReceipt, Receipt: ev.Receipt, ReceiptLine: t.ReceiptLine})
 		}
+	}
+}
+
+// addWorked keeps a turn's run time under its answer. A run shorter than the
+// second it would be rounded to says nothing worth a line.
+func (t *Transcript) addWorked(ms int64) {
+	if ms >= 500 {
+		t.Items = append(t.Items, Item{ID: t.id(), Kind: ItemWorked, WorkedMs: ms})
 	}
 }
 
@@ -560,6 +577,9 @@ func (t *Transcript) sealByReceipt(r *eventwire.DecisionReceipt) {
 		}
 		if (it.Kind == ItemApproval && it.Approval.ID == r.ID) || (it.Kind == ItemAsk && it.Ask.ID == r.ID) {
 			it.Verdict = "elsewhere"
+			if it.Kind == ItemAsk && r.Outcome == "timed_out" {
+				it.Verdict = "timed out"
+			}
 		}
 	}
 }

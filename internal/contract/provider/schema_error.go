@@ -49,3 +49,19 @@ func splitMCPToolName(name string) (server, tool string, ok bool) {
 	}
 	return parts[0], parts[1], true
 }
+
+// AnnotateRequestShape adds what the host knows about the request it sent to a
+// 400 or 422 refusal, so a gateway that reports only a byte position or a type
+// name leaves the reader something to match it against.
+func AnnotateRequestShape(err error, shape string) error {
+	var apiErr *APIError
+	if shape == "" || !errors.As(err, &apiErr) || (apiErr.Status != 400 && apiErr.Status != 422) {
+		return err
+	}
+	annotated := *apiErr
+	if annotated.ToolContext != "" {
+		annotated.ToolContext += "\n"
+	}
+	annotated.ToolContext += shape
+	return &annotated
+}

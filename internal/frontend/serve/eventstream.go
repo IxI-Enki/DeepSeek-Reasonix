@@ -23,12 +23,16 @@ const SSEWatermarkInterval = sseKeepaliveInterval
 // authority that answers it — the transcript for one, the run graph for
 // another. Said plainly, because a hole looks like a quiet turn.
 func (s *Server) eventsReplay(w http.ResponseWriter, r *http.Request) {
-	frames, complete := s.bc.Replay(lastEventID(r))
+	writeEventsReplay(w, r, s.bc)
+}
+
+func writeEventsReplay(w http.ResponseWriter, r *http.Request, bc *Broadcaster) {
+	frames, complete := bc.Replay(lastEventID(r))
 	writeJSON(w, struct {
 		Frames    []json.RawMessage `json:"frames"`
 		Complete  bool              `json:"complete"`
 		Watermark int64             `json:"watermark"`
-	}{frames, complete, s.bc.Watermark()})
+	}{frames, complete, bc.Watermark()})
 }
 
 // lastEventID reads the resume point a client carries. The header is
@@ -240,15 +244,6 @@ const sseKeepaliveInterval = 15 * time.Second
 // disconnects. Each event is one `data:` frame of the JSON wire form, and every
 // frame a client cannot afford to miss also carries an `id:` it can resume from.
 func (s *Server) events(w http.ResponseWriter, r *http.Request) {
-	flusher, ok := w.(http.Flusher)
-	if !ok {
-		refuse(w, http.StatusInternalServerError, "stream.unsupported", "this transport cannot stream", nil)
-		return
-	}
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Connection", "keep-alive")
-
 	var ch <-chan Frame
 	var unsubscribe func()
 	// EventSource carries its last id on a reconnect unasked, so a dropped
@@ -268,6 +263,19 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request) {
 		})
 	})
 	defer unsubscribe()
+
+	streamFrames(w, r, s.bc, ch)
+}
+
+func streamFrames(w http.ResponseWriter, r *http.Request, bc *Broadcaster, ch <-chan Frame) {
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		refuse(w, http.StatusInternalServerError, "stream.unsupported", "this transport cannot stream", nil)
+		return
+	}
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
 
 	fmt.Fprint(w, ": connected\n\n") // open the stream immediately
 	flusher.Flush()
@@ -293,7 +301,7 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request) {
 			// A real frame, not a comment: a comment never reaches onmessage.
 			// Losing the last frame of a turn is what nothing else reveals, and
 			// this is how a client finds out within one interval.
-			fmt.Fprintf(w, "data: {\"kind\":\"stream_watermark\",\"seq\":%d}\n\n", s.bc.Watermark())
+			fmt.Fprintf(w, "data: {\"kind\":\"stream_watermark\",\"seq\":%d}\n\n", bc.Watermark())
 			flusher.Flush()
 		case <-r.Context().Done():
 			return

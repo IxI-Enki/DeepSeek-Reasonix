@@ -1,4 +1,4 @@
-// Icon-rail hover hints: each must be drawn, fully inside the window, and not clipped by any ancestor.
+// Icon-rail hover hints (drawn after a short hover delay): each must be drawn, fully inside the window, and not clipped by any ancestor.
 // Clipping is a layout question jsdom cannot answer. Modes are the stored rail choice; "collapsed" also closes the workspace rail.
 import { chromium } from "playwright";
 
@@ -58,7 +58,12 @@ for (const scheme of ["light", "dark"]) {
     for (let i = 0; i < count; i++) {
       const btn = page.locator(".nav .navbtn").nth(i);
       await btn.hover();
-      await page.waitForTimeout(300);
+      if (i === 0) {
+        await page.waitForTimeout(120);
+        const early = await measure(page, i);
+        check(`${scheme}/${mode}: the hint is not drawn the instant the pointer arrives`, early && early.opacity < 1, `opacity ${early?.opacity}`);
+      }
+      await page.waitForTimeout(700);
       const m = await measure(page, i);
       const tag = `${scheme}/${mode}/#${i} ${m?.text ?? "?"}`;
       if (!m) { check(`${tag}: hint exists`, false); continue; }

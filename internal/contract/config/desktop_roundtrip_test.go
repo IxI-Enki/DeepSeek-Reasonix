@@ -7,6 +7,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/BurntSushi/toml"
 )
 
 // The [desktop] table is written by hand, one line per field, so a field added
@@ -124,3 +126,21 @@ func TestEveryDesktopSettingSurvivesASave(t *testing.T) {
 }
 
 func render(v any) string { return fmt.Sprintf("%v", v) }
+
+// Every width the setter accepts has to come back from a save and reload; a
+// renderer that writes only some of them quietly returns the rest to standard.
+func TestConversationWidthSurvivesRenderAndReparse(t *testing.T) {
+	for _, width := range []string{"standard", "full", "full-all"} {
+		c := Default()
+		if err := c.SetDesktopConversationWidth(width); err != nil {
+			t.Fatal(err)
+		}
+		got := Default()
+		if _, err := toml.Decode(RenderTOMLForScope(c, RenderScopeUser), got); err != nil {
+			t.Fatalf("%s: decode: %v", width, err)
+		}
+		if w := got.DesktopConversationWidth(); w != width {
+			t.Fatalf("saved %q, reloaded %q", width, w)
+		}
+	}
+}

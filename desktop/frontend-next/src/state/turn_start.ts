@@ -13,7 +13,7 @@ export function nameTurnStart(s: SessionState, ev: WireEvent): SessionState {
   const named = s.awaitingTurnStart[at];
   const seat = s.items.findIndex((i) => i.t === "user" && i.id === named);
   const was = s.items[seat] as Extract<Item, { t: "user" }>;
-  const row = { ...was, authoredTurn: ev.authoredTurn, msgIndex: ev.msgIndex, pending: false, via: ev.via };
+  const row = { ...was, authoredTurn: ev.authoredTurn, msgIndex: ev.msgIndex, pending: false, via: ev.via, attachments: ev.attachments };
   // A follow-up that waited in the queue takes its seat where its turn began,
   // under the same rule a delivered steer follows: the transcript is ordered by
   // what happened, and the wait belongs to the composer.
@@ -30,7 +30,7 @@ export function nameTurnStart(s: SessionState, ev: WireEvent): SessionState {
 function drawOthersTurn(s: SessionState, ev: WireEvent): SessionState {
   const text = (ev.text ?? "").trim();
   if (!text || s.items.some((i) => i.t === "user" && i.msgIndex === ev.msgIndex)) return s;
-  const row: Item = { t: "user", id: `turn-${ev.msgIndex}`, text, authoredTurn: ev.authoredTurn, msgIndex: ev.msgIndex, via: ev.via };
+  const row: Item = { t: "user", id: `turn-${ev.msgIndex}`, text, authoredTurn: ev.authoredTurn, msgIndex: ev.msgIndex, via: ev.via, attachments: ev.attachments };
   return { ...s, items: [...s.items, row] };
 }
 
@@ -43,5 +43,5 @@ export function othersSteer(items: Item[], ev: WireEvent): Item[] {
   if (!text || ev.hostAuthored) return items;
   if (ev.itemId && items.some((i) => i.t === "user" && i.itemId === ev.itemId)) return items;
   const id = `steer-${ev.itemId || items.length}`;
-  return [...items, { t: "user", id, text, steer: true, itemId: ev.itemId, via: ev.via }];
+  return [...items, { t: "user", id, text, steer: true, itemId: ev.itemId, via: ev.via, attachments: ev.attachments }];
 }

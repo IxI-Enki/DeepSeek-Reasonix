@@ -68,7 +68,7 @@ func TestSidebarFoldsAConflictChainWithAReclaimedMiddle(t *testing.T) {
 	root, _, chain := seedConflictChain(t)
 	hub := NewHub(HubOptions{})
 
-	rows := hub.workspaceSessions(root, nil)
+	rows := hub.workspacePage(root, "", nil, treeWindow{}, 0).Sessions
 	if len(rows) != 2 {
 		t.Fatalf("intact chain drew %d rows, want the conversation and one folded copy: %s", len(rows), rowSummary(rows))
 	}
@@ -79,7 +79,7 @@ func TestSidebarFoldsAConflictChainWithAReclaimedMiddle(t *testing.T) {
 			t.Fatalf("remove middle link: %v", err)
 		}
 	}
-	rows = hub.workspaceSessions(root, nil)
+	rows = hub.workspacePage(root, "", nil, treeWindow{}, 0).Sessions
 	if len(rows) != 2 {
 		t.Fatalf("a reclaimed middle link split the chain into %d rows: %s", len(rows), rowSummary(rows))
 	}

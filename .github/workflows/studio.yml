@@ -33,7 +33,7 @@ jobs:
           version: 10
           run_install: false
 
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: "24"
           cache: pnpm
@@ -114,7 +114,7 @@ jobs:
           run_install: false
 
       - if: steps.spa.outputs.run == 'true'
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: "24"
           cache: pnpm
@@ -141,9 +141,17 @@ jobs:
           node perf/branch-tooltip.mjs
           node perf/selfcheck.mjs branch-tooltip
 
+  # A pull request with no platform-relevant change (scripts/ci-platform-scope.sh)
+  # moves the Windows and macOS legs onto an ubuntu runner with every step
+  # skipped, so the check names still report without a scarce runner. A push to
+  # studio, or a failed `scope`, runs all three.
   desktop:
     name: desktop (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
+    needs: scope
+    if: always()
+    runs-on: ${{ github.event_name == 'pull_request' && needs.scope.outputs.platform == 'false' && matrix.os != 'ubuntu-22.04' && 'ubuntu-latest' || matrix.os }}
+    env:
+      RUN_STEPS: ${{ github.event_name != 'pull_request' || needs.scope.outputs.platform != 'false' || matrix.os == 'ubuntu-22.04' }}
     strategy:
       fail-fast: false
       matrix:
@@ -152,9 +160,11 @@ jobs:
       run:
         working-directory: desktop
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - if: env.RUN_STEPS == 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+      - if: env.RUN_STEPS == 'true'
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version-file: desktop/go.mod
           cache: true
@@ -167,6 +177,7 @@ jobs:
       # carries build dependencies of its own.
       # Same command as `make studio-test`; this job is already in desktop/.
       - name: go test
+        if: env.RUN_STEPS == 'true'
         run: go test ./...
 
       # The host sits in the main module and nothing else builds it, so its
@@ -174,7 +185,7 @@ jobs:
       # platform-neutral or the Electron bundle cannot ship it. Cross-compiling
       # is host-independent, so once is enough.
       - name: host stays pure Go and platform-neutral
-        if: runner.os == 'Linux'
+        if: env.RUN_STEPS == 'true' && runner.os == 'Linux'
         working-directory: .
         run: |
           for os in windows linux darwin; do
@@ -183,12 +194,15 @@ jobs:
 
   # The ARM64 leg queues on a scarcer runner pool, so a pull request runs it
   # only when it touches what the leg verifies; a push to studio always does.
+  # The macOS and Windows package legs follow `platform`, the same rule as the
+  # desktop matrix above.
   scope:
     name: package matrix
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.pick.outputs.matrix }}
       arm64: ${{ steps.pick.outputs.arm64 }}
+      platform: ${{ steps.pick.outputs.platform }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -200,9 +214,11 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
           arm64=true
+          platform=true
           if [ "$EVENT" = pull_request ]; then
             arm64=false
-            if git diff --name-only "$BASE_SHA" HEAD |
+            platform=$(git diff -z --name-only --no-renames "$BASE_SHA" HEAD | bash scripts/ci-platform-scope.sh)
+            if git diff --name-only --no-renames "$BASE_SHA" HEAD |
               grep -qE '^(desktop/electron/|desktop/cmd/studio-manifest/|desktop/go\.(mod|sum)$|cmd/reasonix-studio-host/|internal/platform/(update|appupdate)/|go\.(mod|sum)$|scripts/(windows-signing-lib|verify-windows-package|verify-windows-authenticode|install-smoke)\.ps1$|\.github/workflows/(studio|release-studio)\.yml$)'; then
               arm64=true
             fi
@@ -212,13 +228,18 @@ jobs:
             {"os":"ubuntu-22.04","arch":"amd64","platform":"linux"},
             {"os":"windows-latest","arch":"amd64","platform":"windows","ebarch":"x64"}
           ]'
-          if [ "$arm64" = true ]; then
+          if [ "$platform" = false ]; then
+            legs="$(jq -c 'map(select(.platform == "linux"))' <<<"$legs")"
+          elif [ "$arm64" = true ]; then
             legs="$(jq -c '. + [{"os":"windows-11-arm","arch":"arm64","platform":"windows","ebarch":"arm64"}]' <<<"$legs")"
           else
             legs="$(jq -c . <<<"$legs")"
           fi
-          echo "arm64=$arm64" >> "$GITHUB_OUTPUT"
-          echo "matrix={\"include\":$legs}" >> "$GITHUB_OUTPUT"
+          {
+            echo "arm64=$arm64"
+            echo "platform=$platform"
+            echo "matrix={\"include\":$legs}"
+          } >> "$GITHUB_OUTPUT"
 
   # The packaging contract, on real artifacts rather than on the config that
   # describes them. Unsigned on purpose: signing and notarization are a
@@ -250,16 +271,17 @@ jobs:
           version: 10
           run_install: false
 
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: "24"
           cache: pnpm
           cache-dependency-path: desktop/electron/pnpm-lock.yaml
 
-      # electron-builder shells out to dpkg-deb through fakeroot for the .deb.
+      # electron-builder shells out to dpkg-deb through fakeroot for the .deb and
+      # to rpmbuild for the .rpm.
       - name: Install Linux packaging deps
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y fakeroot
+        run: sudo apt-get update && sudo apt-get install -y fakeroot rpm
 
       - name: Build the SPA
         working-directory: desktop/frontend-next
@@ -313,6 +335,27 @@ jobs:
           dir=$(find dist -maxdepth 1 -type d -name 'win*-unpacked' | head -1)
           test -n "$dir"
           node desktop/electron/packaging/pe.js "$dir" "${{ matrix.arch }}"
+
+      # An update starts the installer with --updated, and that is what keeps the
+      # shortcuts (and the taskbar pin hanging off them) from being deleted and
+      # recreated. Installed twice over itself the way an update does it, the
+      # desktop shortcut has to still be the same file, pointing at a path with
+      # no version in it, or every update costs the user their pin.
+      - name: An update keeps the shortcuts and they name no version
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        run: |
+          $installer = (Get-ChildItem dist -Filter 'ReasonixStudio-windows-*-installer.exe' | Select-Object -First 1).FullName
+          $dir = Join-Path $env:RUNNER_TEMP 'rx-update-guard'
+          Start-Process $installer -ArgumentList '/S', "/D=$dir" -Wait
+          $lnk = Join-Path ([Environment]::GetFolderPath('Desktop')) 'Reasonix Studio.lnk'
+          $target = (New-Object -ComObject WScript.Shell).CreateShortcut($lnk).TargetPath
+          if ($target -ne (Join-Path $dir 'Reasonix Studio.exe')) { throw "the desktop shortcut targets $target, not the stable executable" }
+          $mark = [datetime]'2020-01-01'
+          (Get-Item $lnk).LastWriteTime = $mark
+          Start-Process $installer -ArgumentList '/S', '--updated', "/D=$dir" -Wait
+          if ((Get-Item $lnk).LastWriteTime -ne $mark) { throw 'an update rewrote the desktop shortcut' }
+          Start-Process (Join-Path $dir 'Uninstall Reasonix Studio.exe') -ArgumentList '/S', '/currentuser' -Wait
 
       # The release packages a signed copy of the bundle and then reads both
       # packages back against it. The same recipe on an unsigned copy, so the
@@ -369,7 +412,7 @@ jobs:
 
       - name: Keep the arm64 installer for the x64 refusal check
         if: matrix.platform == 'windows' && matrix.arch == 'arm64'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: studio-arm64-installer-ci
           path: dist/ReasonixStudio-windows-arm64-installer.exe
@@ -416,6 +459,16 @@ jobs:
             echo "::error::the package is $name; dpkg holds that beside the installed reasonix-studio instead of upgrading it, and update.StudioLine asks for it by name"
             exit 1
           fi
+          # The helper in the package accepts one package name, compiled in. It has
+          # to be the one the package carries, or every in-app update is refused
+          # as a different package after the download and signature succeed.
+          dpkg-deb --fsys-tarfile "$deb" | tar -xO ./usr/lib/reasonix-studio/reasonix-studio-update-helper > "$RUNNER_TEMP/update-helper"
+          chmod +x "$RUNNER_TEMP/update-helper"
+          accepts=$("$RUNNER_TEMP/update-helper" package)
+          if [ "$accepts" != "$name" ]; then
+            echo "::error::the update helper in the package accepts $accepts but the package is $name"
+            exit 1
+          fi
           dpkg-deb -c "$deb" > contents.txt
           # The path is the polkit action's exec.path annotation, so it is the
           # only one authorization is granted for; root because polkit will not
@@ -430,6 +483,31 @@ jobs:
           fi
           if ! grep -q './usr/share/polkit-1/actions/io.reasonix.studio.update.policy$' contents.txt; then
             echo "::error::the polkit action is not in the package, so pkexec has nothing to authorize against"
+            exit 1
+          fi
+
+      # The .rpm is read back for the same two properties as the .deb: it is the
+      # package update.StudioLine names, and the helper pkexec runs as root is
+      # owned by root and writable by no one else, or any local user could
+      # replace it.
+      - name: The .rpm is Studio's own package and carries what updates it
+        if: runner.os == 'Linux'
+        run: |
+          rpm=$(ls dist/ReasonixStudio-linux-*.rpm)
+          name=$(rpm -qp --qf '%{NAME}' "$rpm")
+          if [ "$name" != "reasonix-studio" ]; then
+            echo "::error::the package is $name; rpm holds that beside the installed reasonix-studio instead of upgrading it"
+            exit 1
+          fi
+          rpm -qp --qf '[%{FILEMODES:perms} %{FILEUSERNAME} %{FILEGROUPNAME} %{FILENAMES}\n]' "$rpm" > contents.txt
+          if ! grep -qxE -- '-rwxr-xr-x root root /usr/lib/reasonix-studio/reasonix-studio-update-helper' contents.txt; then
+            echo "::error::no root-owned, executable, not-writable update helper at the path the polkit action names"
+            grep reasonix-studio-update-helper contents.txt || echo "(not in the package at all)"
+            exit 1
+          fi
+          if ! grep -qE -- '^-r[w-][x-]r-[x-]r-[x-] root root /usr/share/polkit-1/actions/io.reasonix.studio.update.policy$' contents.txt; then
+            echo "::error::the polkit action is missing, or is not a root-owned file no one else can write"
+            grep polkit contents.txt || echo "(not in the package at all)"
             exit 1
           fi
 
@@ -480,7 +558,7 @@ jobs:
     if: needs.scope.outputs.arm64 == 'true'
     runs-on: windows-latest
     steps:
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: studio-arm64-installer-ci
           path: installer

@@ -719,14 +719,14 @@ func TestNotificationsDefaultsKeepEventSwitchesEnabled(t *testing.T) {
 	if cfg.Notifications.Enabled {
 		t.Fatal("notifications.enabled default = true, want false")
 	}
-	if !cfg.Notifications.TurnDone || !cfg.Notifications.ApprovalRequest || !cfg.Notifications.AskRequest {
+	if !cfg.Notifications.TurnDone || !cfg.Notifications.ApprovalRequest || !cfg.Notifications.AskRequest || !cfg.Notifications.FeedbackReply {
 		t.Fatalf("notification event switches default off: %+v", cfg.Notifications)
 	}
 
 	if _, err := toml.Decode("[notifications]\nenabled = true\n", cfg); err != nil {
 		t.Fatalf("decode notifications: %v", err)
 	}
-	if !cfg.Notifications.Enabled || !cfg.Notifications.TurnDone || !cfg.Notifications.ApprovalRequest || !cfg.Notifications.AskRequest {
+	if !cfg.Notifications.Enabled || !cfg.Notifications.TurnDone || !cfg.Notifications.ApprovalRequest || !cfg.Notifications.AskRequest || !cfg.Notifications.FeedbackReply {
 		t.Fatalf("enabled-only config should keep event switches on: %+v", cfg.Notifications)
 	}
 }
@@ -1607,5 +1607,24 @@ func TestBrowserSettingsSurviveASave(t *testing.T) {
 	}
 	if d := Default(); d.Browser.SharedEnabled != nil || d.Browser.Headless || d.Browser.Executable != "" {
 		t.Fatalf("default browser config = %+v", d.Browser)
+	}
+}
+
+func TestShowReceiptDefaultsOffAndRendersAnOnOverride(t *testing.T) {
+	c := Default()
+	if c.UI.ShowReceipt {
+		t.Fatal("ui.show_receipt must default to hidden")
+	}
+	c.UI.ShowReceipt = true
+	delta := RenderTOMLProjectDelta(c)
+	if !strings.Contains(delta, "show_receipt = true") {
+		t.Fatalf("project delta missing show_receipt:\n%s", delta)
+	}
+	got := Default()
+	if _, err := toml.Decode(delta, got); err != nil {
+		t.Fatalf("decode: %v\n%s", err, delta)
+	}
+	if !got.UI.ShowReceipt {
+		t.Fatal("ui.show_receipt did not round-trip")
 	}
 }

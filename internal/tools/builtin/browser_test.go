@@ -9,6 +9,12 @@ import (
 	"reasonix/internal/platform/browser"
 )
 
+func TestBrowserOpenOptsOutOfPlanMode(t *testing.T) {
+	if (browserOpen{}).ReadOnly() || (browserOpen{}).PlanModeSafe() {
+		t.Fatal("browser_open can execute page scripts, so it needs approval after planning")
+	}
+}
+
 func TestBrowserPermissionArgsCarryTheHostsOrigin(t *testing.T) {
 	session := browser.NewSession(browser.Config{})
 	open := browserOpen{session: session}

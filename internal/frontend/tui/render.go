@@ -3,6 +3,7 @@ package tui
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"reasonix/internal/base/i18n"
 	"reasonix/internal/base/textutil"
@@ -69,9 +70,11 @@ func renderItem(it *Item, width, shown int, hideRail bool) string {
 	case ItemCompaction:
 		return renderCompaction(it, width)
 	case ItemReceipt:
-		return renderReceipt(it.Receipt, width)
+		return renderReceipt(it.Receipt, width, it.ReceiptLine)
 	case ItemUsage:
 		return renderUsage(it.Usage, width)
+	case ItemWorked:
+		return termrender.Dim("  " + fmt.Sprintf(i18n.M.ChatWorkedForFmt, i18n.Elapsed(time.Duration(it.WorkedMs)*time.Millisecond)))
 	}
 	return ""
 }
@@ -345,7 +348,7 @@ func codedNoticeText(it *Item) string {
 			if name == "" {
 				name = p.ID
 			}
-			return fmt.Sprintf(i18n.M.NoticeJobFailedFmt, name) + jobError(p.Error)
+			return fmt.Sprintf(i18n.M.NoticeJobFailedFmt, name) + jobFailure(p)
 		}
 	case event.NoticeCodeExtensionSkipped:
 		if p, ok := event.DecodeExtensionSkipped(it.Detail); ok && p.Reason == event.ExtensionSkipReasonNoLiveSidecar {
@@ -353,6 +356,18 @@ func codedNoticeText(it *Item) string {
 		}
 	}
 	return it.Text
+}
+
+// jobFailure words how a failed job's process ended from the typed fields,
+// falling back to the job function's own error text when none were written.
+func jobFailure(p event.JobNotice) string {
+	switch {
+	case p.Signal > 0:
+		return ": " + fmt.Sprintf(i18n.M.NoticeJobSignalFmt, p.Signal)
+	case p.ExitCode != nil:
+		return ": " + fmt.Sprintf(i18n.M.NoticeJobExitFmt, *p.ExitCode)
+	}
+	return jobError(p.Error)
 }
 
 func jobError(msg string) string {

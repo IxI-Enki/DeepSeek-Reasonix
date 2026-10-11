@@ -38,6 +38,8 @@ export function saidBy(it: Item): string[] {
       return [it.c.summary ?? ""];
     case "remember":
       return [it.m.title, it.m.description, it.m.body];
+    case "worked":
+      return [];
     case "receipt":
       return [
         ...(it.r.changes ?? []).map((c) => c.path),
@@ -66,11 +68,12 @@ function haystack(it: Item): string {
   return made;
 }
 
-export function search(items: Item[], query: string): Hit[] {
+export function search(items: Item[], query: string, receipts = false): Hit[] {
   const needle = query.trim().toLocaleLowerCase();
   if (!needle) return [];
   const out: Hit[] = [];
   for (let row = 0; row < items.length; row++) {
+    if (items[row].t === "receipt" && !receipts) continue;
     const hay = haystack(items[row]);
     for (let at = hay.indexOf(needle); at >= 0; at = hay.indexOf(needle, at + needle.length)) {
       out.push({ id: items[row].id, row, at });

@@ -126,11 +126,7 @@ func PlanMove(ctx context.Context, root config.RootID, target string) Plan {
 			plan.Bytes, plan.Files, _, _, _ = measureRoot(ctx, plan.Root, plan.To, 0)
 			plan.Need = headroom
 		} else {
-			plan.Refusals = append(plan.Refusals, Refusal{
-				Code: "target.not_empty",
-				Detail: "that folder holds something else; choose an empty one, " +
-					"or one that already holds this data and it will be pointed at as it is",
-			})
+			plan.Refusals = append(plan.Refusals, Refusal{Code: "target.not_empty", Detail: notEmptyDetail(plan.Root, entries)})
 		}
 	}
 	vol := readVolume(plan.To)
@@ -203,3 +199,25 @@ func samePath(a, b string) bool {
 
 // HumanBytes renders a size the way the storage panel shows it.
 func HumanBytes(n int64) string { return textutil.HumanBytes(n) }
+
+// notEmptyDetail says what the target holds that this data does not own, and
+// what it would have to hold to be adopted, so a refusal can be acted on.
+func notEmptyDetail(root config.RootID, entries []os.DirEntry) string {
+	const shown = 8
+	foreign := foreignEntries(root, entries)
+	detail := "that folder holds something else; choose an empty one, " +
+		"or one that already holds this data and it will be pointed at as it is"
+	if len(foreign) == 0 {
+		return detail
+	}
+	more := ""
+	if len(foreign) > shown {
+		more = fmt.Sprintf(" and %d more", len(foreign)-shown)
+		foreign = foreign[:shown]
+	}
+	detail += "; it holds " + strings.Join(foreign, ", ") + more + ", which this data does not own"
+	if owned := config.RootOwns(root); len(owned) > 0 {
+		detail += " (this data owns " + strings.Join(owned, ", ") + ")"
+	}
+	return detail
+}

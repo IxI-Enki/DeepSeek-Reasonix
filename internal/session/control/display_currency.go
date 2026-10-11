@@ -32,6 +32,20 @@ func (c *Controller) SaveDisplayCurrency(mode string) error {
 	if err != nil {
 		return err
 	}
+	group := c.currencyGroup()
+	if group != nil {
+		group.mu.Lock()
+		defer group.mu.Unlock()
+		if _, live := group.members[c]; !live {
+			return ErrDisplayCurrencyRetired
+		}
+	}
+	c.mu.Lock()
+	closed := c.gate.closed
+	c.mu.Unlock()
+	if closed {
+		return ErrDisplayCurrencyRetired
+	}
 	path := config.UserConfigPath()
 	if path == "" {
 		return errors.New("cannot resolve user config path")
@@ -47,7 +61,7 @@ func (c *Controller) SaveDisplayCurrency(mode string) error {
 	if err != nil {
 		return err
 	}
-	c.sink.Emit(event.Event{Kind: event.Notice, Level: event.LevelInfo, Code: event.NoticeCodeDisplayCurrency,
+	group.emitLocked(c, event.Event{Kind: event.Notice, Level: event.LevelInfo, Code: event.NoticeCodeDisplayCurrency,
 		Text: fmt.Sprintf(i18n.M.CurrencyChangedFmt, currencyDisplay(pref), resolved), Detail: pref})
 	return nil
 }

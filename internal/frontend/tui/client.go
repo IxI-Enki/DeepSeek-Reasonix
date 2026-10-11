@@ -156,17 +156,18 @@ func (c *Client) SetApprovalMode(ctx context.Context, mode string) error {
 
 // HistoryMessage is one record of the session as /history returns it.
 type HistoryMessage struct {
-	Role         string            `json:"role"`
-	Content      string            `json:"content"`
-	Reasoning    string            `json:"reasoning,omitempty"`
-	MsgIndex     int               `json:"msgIndex"`
-	HostAuthored bool              `json:"hostAuthored,omitempty"`
-	Steer        bool              `json:"steer,omitempty"`
-	ThoughtMs    int64             `json:"thoughtMs,omitempty"`
-	ToolCalls    []HistoryToolCall `json:"toolCalls,omitempty"`
-	ToolCallID   string            `json:"toolCallId,omitempty"`
-	ToolFailed   bool              `json:"toolFailed,omitempty"`
-	ToolName     string            `json:"toolName,omitempty"`
+	Role           string            `json:"role"`
+	Content        string            `json:"content"`
+	Reasoning      string            `json:"reasoning,omitempty"`
+	MsgIndex       int               `json:"msgIndex"`
+	HostAuthored   bool              `json:"hostAuthored,omitempty"`
+	Steer          bool              `json:"steer,omitempty"`
+	ThoughtMs      int64             `json:"thoughtMs,omitempty"`
+	WorkDurationMs int64             `json:"workDurationMs,omitempty"`
+	ToolCalls      []HistoryToolCall `json:"toolCalls,omitempty"`
+	ToolCallID     string            `json:"toolCallId,omitempty"`
+	ToolFailed     bool              `json:"toolFailed,omitempty"`
+	ToolName       string            `json:"toolName,omitempty"`
 	// OutputDiff marks a rebuilt shell result whose whole output is a unified
 	// diff, re-derived by the server so a reopened session renders it as one.
 	OutputDiff bool `json:"outputDiff,omitempty"`
@@ -289,11 +290,21 @@ type Completion struct {
 }
 
 type CompletionItem struct {
-	Label   string `json:"label"`
-	Insert  string `json:"insert"`
-	Hint    string `json:"hint,omitempty"`
-	Descend bool   `json:"descend,omitempty"`
-	Kind    string `json:"kind,omitempty"`
+	Label   string          `json:"label"`
+	Insert  string          `json:"insert"`
+	Hint    string          `json:"hint,omitempty"`
+	Descend bool            `json:"descend,omitempty"`
+	Kind    string          `json:"kind,omitempty"`
+	Args    []CompletionArg `json:"args,omitempty"`
+	// MoreArgs counts declarations the kernel left out of Args.
+	MoreArgs int `json:"moreArgs,omitempty"`
+}
+
+// CompletionArg is one argument a prompt declares.
+type CompletionArg struct {
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+	Required    bool   `json:"required,omitempty"`
 }
 
 // Complete asks for completions at cursor, a UTF-16 offset into line.

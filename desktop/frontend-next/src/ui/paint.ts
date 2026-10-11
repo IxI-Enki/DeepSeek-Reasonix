@@ -39,13 +39,7 @@ export function usePaint(hub: HubPort, runtimes: RuntimeView[], running: boolean
   const [pack, setPack] = useState<ThemePack | null>(null);
   const [look, setLook] = useState<Look>({});
 
-  // Appearance is the window's, not the focused pane's. A remote kernel keeps
-  // its own copy, and adopting that one repaints this window because the
-  // reader changed tabs — so these three read and write the local pane only.
-  const lookPort = useMemo(() => {
-    const local = runtimes.find((rt) => !rt.host);
-    return local ? hub.portFor(local) : null;
-  }, [hub, runtimes]);
+  const lookPort = useMemo(() => hub.machinePort(), [hub]);
 
   const reloadThemes = useCallback(() => {
     lookPort
@@ -53,19 +47,23 @@ export function usePaint(hub: HubPort, runtimes: RuntimeView[], running: boolean
       .then((list) => setPack(list.find((p) => p.active) ?? null))
       .catch(onError);
   }, [lookPort, onError]);
-  useEffect(reloadThemes, [reloadThemes]);
+  useEffect(() => { if (runtimes.some((rt) => !rt.host)) reloadThemes(); }, [reloadThemes, runtimes]);
 
   useEffect(() => {
+    if (!runtimes.some((rt) => !rt.host)) return;
+    let alive = true;
     lookPort
       ?.appearance()
       .then((next) => {
+        if (!alive) return;
         // The kernel's copy is the authority across machines; adopt reloads if
         // this window booted in the wrong language from a stale local cache.
         if (adoptLang(next.language)) return;
         setLook(next);
       })
       .catch(() => {});
-  }, [lookPort]);
+    return () => { alive = false; };
+  }, [lookPort, runtimes]);
 
   // The control moves now and the config catches up: a size or a colour that
   // waits on a round trip reads as a dead click. The kernel's answer is still

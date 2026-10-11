@@ -65,6 +65,11 @@ type vendorCapabilities struct {
 	// refer to (DeepSeek). OpenAI marks Reasoning.id required — zero sends it.
 	omitReasoningIdentity bool
 
+	// imageDetail adds the schema's `detail` to input_image parts. Only an
+	// endpoint confirmed to accept it gets it, so it is set from the official
+	// OpenAI host rather than by the vendor table, whose names key other state.
+	imageDetail bool
+
 	// summary is the shape the `summary` field takes on an input reasoning
 	// item. The zero value is the OpenAI base shape, so an endpoint nobody
 	// has characterized still sends what the published schema asks for.

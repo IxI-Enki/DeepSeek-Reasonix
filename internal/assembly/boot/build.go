@@ -29,6 +29,7 @@ import (
 	"reasonix/internal/platform/lsp"
 	"reasonix/internal/runtime/agent"
 	"reasonix/internal/runtime/delegation"
+	"reasonix/internal/safety/endpointclient"
 	"reasonix/internal/safety/permission"
 	"reasonix/internal/safety/sandbox"
 	"reasonix/internal/session/control"
@@ -49,6 +50,7 @@ type builder struct {
 	roots            config.Roots
 	cfg              *config.Config
 	sink             event.Sink
+	quoteContext     *event.QuoteContext
 	proxy            netclient.ProxySpec
 	ext              *extensionStage
 	pendingMgr       *sidecar.Manager // sidecars no RuntimeSet owns yet
@@ -57,6 +59,7 @@ type builder struct {
 	keep             agent.KeepPolicy
 	session          sessionRuntime
 	balanceClient    *http.Client
+	keyedClient      *http.Client // carries provider keys; refuses cross-origin redirects
 	execProv         provider.Provider
 	shell            sandbox.Shell
 	prompt           promptAssembly
@@ -108,6 +111,12 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 	// one), and its MCP servers and sidecars start on that context later.
 	b.ctx, b.opts, b.owner, b.fileWriteReceipt = bindRuntimeOwner(context.WithoutCancel(ctx), opts)
 	defer b.retireUnownedSidecars()
+	delivered := false
+	if b.owner.Notices != nil && b.opts.Sink != nil {
+		window := b.owner.Notices.Begin(b.opts.Sink)
+		b.opts.Sink = window
+		defer func() { window.Close(delivered) }()
+	}
 	if err := b.load(); err != nil {
 		return nil, err
 	}
@@ -120,7 +129,17 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 	}
 	b.tools.candidates.bind(ctrl)
 	b.tools.isolation.bind(ctrl)
-	return b.freeze(ctrl)
+	res, err := b.freeze(ctrl)
+	delivered = err == nil
+	return res, err
+}
+
+// workspaceExtraRoots is the one list of folders that count as the workspace
+// beside the root: the granted extra roots and this session's --add-dir folders.
+// The executor and every sub-agent it spawns read it, so a write in one is
+// observed the same way whoever made it.
+func (b *builder) workspaceExtraRoots() []string {
+	return appendUniquePaths(b.cfg.ExtraRoots(), b.additionalDirs...)
 }
 
 // retireUnownedSidecars restores adopted clients and closes fresh sidecars when
@@ -172,7 +191,9 @@ func (b *builder) load() error {
 	// One synchronized sink for every emitter: background jobs and sidecars
 	// emit from their own goroutines. The goal tee and the coalescer wrap it
 	// here, before the extension hub captures it, so agents emit through both.
-	b.sink = control.NewGoalUsageTee(event.Coalesce(quotedSink(cfg, opts), event.DefaultStreamDeltaWindow))
+	quoted, quoteContext := quotedSink(cfg, opts)
+	b.quoteContext = quoteContext
+	b.sink = control.NewGoalUsageTee(event.Coalesce(quoted, event.DefaultStreamDeltaWindow))
 	// Tag a shell result whose whole output is a diff, once, before the
 	// extension hub captures the sink — every emitter shares this one.
 	b.sink = event.MarkEmbeddedDiffs(b.sink, cfg.EmbeddedDiffDetectionEnabled())
@@ -206,6 +227,9 @@ func (b *builder) load() error {
 		return err
 	}
 	if b.balanceClient, err = netclient.NewHTTPClient(b.proxy, netclient.TransportOptions{}); err != nil {
+		return err
+	}
+	if b.keyedClient, err = endpointclient.New(b.proxy, netclient.TransportOptions{}); err != nil {
 		return err
 	}
 	if b.execProv, err = resolveProvider(b.providers.effective, cfg, b.proxy, provider.Selection{Ref: b.model.ref, Effort: opts.EffortOverride}); err != nil {
@@ -297,7 +321,7 @@ func (b *builder) wireTools() error {
 	// The full inventory registers for use_capability; the provider-visible surface narrows later.
 	addBuiltins(t.reg, cfg.Tools.Enabled, env.writeRoots, env.bash, env.bashTimeout, env.search, b.stderr, root, b.proxy, env.forbidReadRoots, env.readRoots, env.readPaths, env.sessionGuard, env.managedConfig, opts.FileOverlay, opts.TerminalRunner, env.sessionTemp, b.fileWriteReceipt)
 	bindFileViews(t.reg, cfg.Tools.ChangedFilesProtected())
-	addSystemOne(t.reg, cfg.Tools.Enabled, cfg, b.balanceClient)
+	addSystemOne(t.reg, cfg.Tools.Enabled, cfg, b.keyedClient)
 	addAdvisor(t.reg, cfg, b.proxy, b.sink)
 	b.addBestOf()
 	if cfg.Agent.CodeMode {
@@ -336,7 +360,7 @@ func (b *builder) wireTools() error {
 	}
 	t.taskTool, t.skillRun = t.roles.delegation(delegationInputs{opts: opts, sub: t.sub, exec: b.execProv, entry: b.model.entry,
 		modelName: b.model.name, root: root, maxSteps: t.maxSteps, delivery: b.model.delivery, store: subagentStore,
-		session: b.session, bashEnforced: env.bash.Enforce})
+		session: b.session, bashEnforced: env.bash.Enforce, extraRoots: b.workspaceExtraRoots()})
 	b.addIsolation()
 	registerSessionTools(t.reg, opts.Ablation, b.roots, b.session.dir, b.prompt.memory.Store)
 
@@ -452,7 +476,7 @@ func (b *builder) executor() *agent.Agent {
 		// Reserving writes at the executor entry covers every writer, late MCP
 		// adds included, without wrapping tool schemas.
 		WriteScheduler:     t.sub.scheduler,
-		WriteWorkspaceRoot: b.root, WorkspaceScanLimit: b.opts.WorkspaceScanLimit, WorkspaceVCS: b.prompt.workspaceVCS, RenderRoot: renderRoot(t.browser, entry, b.root),
+		WriteWorkspaceRoot: b.root, ExtraWorkspaceRoots: b.workspaceExtraRoots(), WorkspaceScanLimit: b.opts.WorkspaceScanLimit, WorkspaceVCS: b.prompt.workspaceVCS, RenderRoot: renderRoot(t.browser, entry, b.root),
 		ProjectChecks: b.prompt.projectChecks, ProjectSensitivePaths: b.prompt.sensitivePaths,
 		EvidenceSeal:                 t.env.evidenceSeal,
 		AgentPreset:                  b.model.preset,
@@ -497,6 +521,7 @@ func (b *builder) controllerOptions(runner agent.Runner, executor *agent.Agent, 
 		Runner:                         runner,
 		Executor:                       executor,
 		Sink:                           b.sink,
+		QuoteContext:                   b.quoteContext,
 		Policy:                         t.policy,
 		SubagentGate:                   t.gate,
 		Label:                          label,
@@ -513,6 +538,7 @@ func (b *builder) controllerOptions(runner agent.Runner, executor *agent.Agent, 
 		AllSkills:                      b.prompt.allSkills,
 		SkillStore:                     b.prompt.skillStore,
 		AllSkillStore:                  b.prompt.allSkillStore,
+		Clock:                          b.clock(),
 		DisableImplicitSkillInvocation: !b.prompt.implicitSkills || b.opts.Observe != nil,
 		SkillRunner:                    t.runners.run,
 		ReadOnlySkillRunner:            t.runners.readOnly,
@@ -521,7 +547,7 @@ func (b *builder) controllerOptions(runner agent.Runner, executor *agent.Agent, 
 		Memory:                         b.prompt.memory,
 		// Read at Close time: freeze chains the extension runtime set onto it.
 		Cleanup:               func() { b.cleanup() },
-		Balance:               opts.BalanceStore.Cache(b.balanceClient, entry.BalanceURL, entry.APIKey()),
+		Balance:               opts.BalanceStore.Cache(b.keyedClient, entry.BalanceURL, entry.APIKey()),
 		Feedback:              control.FeedbackOptions{Service: feedbackService(b.roots.Home(), b.proxy), ProviderKind: feedbackProviderKind(entry), Surface: opts.FeedbackSurface},
 		Jobs:                  b.session.jobs,
 		TaskStore:             opts.TaskStore,
@@ -647,4 +673,13 @@ func (b *builder) freeze(ctrl *control.Controller) (*BuildResult, error) {
 		ProjectChecks:           b.prompt.projectChecks, ProjectSensitivePaths: b.prompt.sensitivePaths,
 	}
 	return finalizeBuildResult(b.roots, &BuildResult{Controller: ctrl, Snapshot: snap, Runtime: runtimeSet, Owner: b.owner, Extensions: extensionMgr, Dispatcher: dispatcher, ExtensionUI: hub, ProviderResolver: providerResolver, BaseProviderResolver: b.providers.base, Assembly: assembly, Phases: b.timer.done("assemble")}, !b.opts.deferPublish), nil
+}
+
+// clock is the one place the system clock enters the assembly: a host supplies
+// none, a test supplies its own.
+func (b *builder) clock() func() time.Time {
+	if b.opts.clock != nil {
+		return b.opts.clock
+	}
+	return time.Now
 }

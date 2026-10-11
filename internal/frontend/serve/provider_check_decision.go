@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net"
 	"net/http"
+	"reasonix/internal/safety/endpointclient"
 
 	"reasonix/internal/base/netclient"
 	"reasonix/internal/contract/config"
@@ -36,7 +37,7 @@ func probeDecision(ctx context.Context, cfg *config.Config, entry *config.Provid
 	if entry.NoProxy && proxy.Mode != netclient.ModeCustom {
 		proxy = netclient.ProxySpec{Mode: netclient.ModeOff}
 	}
-	client, err := netclient.NewHTTPClient(proxy, netclient.TransportOptions{})
+	client, err := endpointclient.New(proxy, netclient.TransportOptions{})
 	if err != nil {
 		return errors.New("decision probe client: " + err.Error())
 	}

@@ -17,6 +17,13 @@ type Sender interface {
 	Send(Message) error
 }
 
+// Chimer is a Sender that can also play a short audible cue by itself, so the
+// sound does not depend on the system's notification settings (focus modes mute
+// the toast and its sound together).
+type Chimer interface {
+	Chime() error
+}
+
 // Sink forwards every event to inner and mirrors configured attention events to
 // sender. It holds the setting rather than a copy of it, so a runtime built
 // while notifications were off still delivers once they are turned on.
@@ -43,11 +50,24 @@ func (s *Sink) Emit(e event.Event) {
 
 // SendEvent applies the same notification rules for paths that do not emit through Sink.
 func SendEvent(sender Sender, say i18n.Messages, cfg config.NotificationsConfig, e event.Event) {
-	if !cfg.Enabled || sender == nil {
+	if msg, ok := message(say, cfg, e); ok {
+		announce(sender, cfg, msg)
+	}
+}
+
+// announce delivers one already-chosen message under the two master switches:
+// the toast under Enabled, the chime under Sound.
+func announce(sender Sender, cfg config.NotificationsConfig, msg Message) {
+	if sender == nil {
 		return
 	}
-	if msg, ok := message(say, cfg, e); ok {
+	if cfg.Enabled {
 		_ = sender.Send(msg)
+	}
+	if cfg.Sound {
+		if c, ok := sender.(Chimer); ok {
+			_ = c.Chime()
+		}
 	}
 }
 

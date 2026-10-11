@@ -155,6 +155,24 @@ func (l *Ledger) HasBlockedConclusionAfter(after int) bool {
 	return false
 }
 
+// HandedBackAfter reports whether the model explicitly gave the turn back after
+// the boundary, by blocking it or by waiting on the user. The obligation it
+// leaves stays owed in the ledger and on the receipt; only the host's own
+// continuation yields.
+func (l *Ledger) HandedBackAfter(after int) bool {
+	if l == nil {
+		return false
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	for _, r := range l.receipts[max(after+1, 0):] {
+		if r.Success && (r.ToolName == "conclude_blocked" || r.ToolName == UserGateTool) {
+			return true
+		}
+	}
+	return false
+}
+
 // LatestUnreadableVerificationAfter returns the most recent check that ran
 // after the boundary and whose outcome the host could not read. Telling a model
 // to "run a verification" when it just ran one it cannot see the result of

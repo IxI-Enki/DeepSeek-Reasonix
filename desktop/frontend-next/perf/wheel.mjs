@@ -1,10 +1,9 @@
 // 滚轮轨迹的探针：在一份很高的两轮转录里一路向上滚，scrollTop 在滚轮向上时
 // 不许往下走、单步不许比滚轮多走、scrollHeight 不许缩水。
 //
-// 目前只报告、不判红：`.call` 的 `content-visibility: auto` 配上
-// `contain-intrinsic-size: auto 216px`，会在块第一次进入视口时把预估高度改成
-// 实测高度，scrollHeight 随之缩水（12975 → 11217），内容在手指下跳动。修复
-// 落地后把 `WHEEL_STRICT` 的默认值翻成 1，这条探针就成为那次修复的验收。
+// `.call` 不再带 `content-visibility: auto`：它按预估高度占位、首次进入视口时改成实测高度，
+// scrollHeight 随之缩水（12975 → 11217），内容在手指下跳动。块的卸载与占位由 Block 负责。
+// 默认严格；WHEEL_STRICT=0 只报告。
 import { chromium } from "playwright";
 
 const PAGE = process.env.PERF_URL ?? "http://localhost:4399/perf.html";
@@ -12,7 +11,7 @@ const STEP = Number(process.env.WHEEL_STEP ?? 100);
 const TURNS = Number(process.env.WHEEL_TURNS ?? 2);
 const CALLS = Number(process.env.WHEEL_CALLS ?? 6);
 const WAIT = Number(process.env.WHEEL_WAIT ?? 120);
-const STRICT = (process.env.WHEEL_STRICT ?? "0") === "1";
+const STRICT = (process.env.WHEEL_STRICT ?? "1") === "1";
 
 const browser = await chromium.launch();
 const ctx = await browser.newContext({ locale: "zh-CN", viewport: { width: 1440, height: 900 } });

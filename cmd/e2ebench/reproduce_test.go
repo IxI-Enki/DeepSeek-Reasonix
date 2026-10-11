@@ -46,9 +46,14 @@ func TestReproductionSection(t *testing.T) {
 	a := writeReport(t, dir, "a.json", "sha256:aaaaaaaaaaaaaaaa", 40, 50)
 	same := writeReport(t, dir, "b.json", "sha256:aaaaaaaaaaaaaaaa", 38, 50)
 	got := reproductionSection(a, same)
-	for _, want := range []string{"version: one version (aaaaaaaaaaaa)", "corpus: same 50 tasks", "within noise", "reproduces within the noise floor"} {
+	for _, want := range []string{"capability set: one set (aaaaaaaaaaaa)", "task prompts: same 50 task ids and prompts", "not compared: commit, build, configuration, grader", "within noise", "The same capability set and task prompts reproduce within the noise floor."} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("same version report missing %q:\n%s", want, got)
+		}
+	}
+	for _, claim := range []string{"One version", "one corpus"} {
+		if strings.Contains(got, claim) {
+			t.Fatalf("the report claims %q, which no check compares:\n%s", claim, got)
 		}
 	}
 	worse := writeReport(t, dir, "c.json", "sha256:aaaaaaaaaaaaaaaa", 5, 50)
@@ -56,7 +61,7 @@ func TestReproductionSection(t *testing.T) {
 		t.Fatalf("a 70pp drop read as noise:\n%s", got)
 	}
 	other := writeReport(t, dir, "d.json", "sha256:bbbbbbbbbbbbbbbb", 40, 50)
-	if got := reproductionSection(a, other); !strings.Contains(got, "two versions") || strings.Contains(got, "reproduces") {
+	if got := reproductionSection(a, other); !strings.Contains(got, "two capability sets") || strings.Contains(got, "reproduces") {
 		t.Fatalf("two versions read as a reproduction:\n%s", got)
 	}
 }

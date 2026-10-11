@@ -28,6 +28,17 @@ type SlashItem struct {
 	// builtin|command|skill|subagent|prompt|file|dir|resource; empty on an
 	// argument value, which is not a thing a frontend draws differently.
 	Kind string `json:"kind,omitempty"`
+	// Args are the arguments a prompt declares, in order; empty for anything else.
+	Args []SlashArg `json:"args,omitempty"`
+	// MoreArgs counts declarations left out of Args to keep the row short.
+	MoreArgs int `json:"moreArgs,omitempty"`
+}
+
+// SlashArg is one declared argument of an MCP prompt, as prompts/list reports it.
+type SlashArg struct {
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+	Required    bool   `json:"required,omitempty"`
 }
 
 // ArgData supplies the dynamic data SlashArgItems needs, so the completion logic
@@ -90,6 +101,8 @@ func SlashArgItems(line string, d ArgData) ([]SlashItem, int) {
 		raw = languageArgItems(prior)
 	case "/currency":
 		raw = currencyArgItems(prior)
+	case "/ask-timeout":
+		raw = askTimeoutArgItems(prior)
 	case "/memory":
 		raw = memoryArgItems(prior, d)
 	case "/feedback":

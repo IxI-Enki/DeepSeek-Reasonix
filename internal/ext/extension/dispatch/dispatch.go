@@ -175,6 +175,21 @@ func New(chain map[extension.InterceptorPoint][]extension.Contribution, replacem
 	}
 }
 
+// Options returns the reporting this dispatcher was built with, so a successor
+// built after a rebuild reports through the same channels.
+func (d *Dispatcher) Options() Options {
+	return Options{Warn: d.warn, SidecarDown: d.sidecarDown}
+}
+
+// Intercepts reports whether a sidecar sits on point: a plugin-backed
+// contribution the walk would call. Nil-safe.
+func (d *Dispatcher) Intercepts(point extension.InterceptorPoint) bool {
+	if d == nil {
+		return false
+	}
+	return slices.ContainsFunc(d.chain[point], func(c extension.Contribution) bool { return c.Source.PluginID != "" })
+}
+
 // Intercept walks the chain for point in frozen order, calling each
 // plugin-backed interceptor with the current (possibly already replaced)
 // payload. payloadPtr must be a pointer to the point's registered DTO; on
@@ -403,11 +418,15 @@ func (d *Dispatcher) failure(pluginID string, point extension.InterceptorPoint, 
 	if d.isRequired(pluginID) {
 		return &FailureError{Plugin: pluginID, Point: point, Err: err}
 	}
-	if errors.Is(err, ErrNoLiveSidecar) && d.sidecarDown != nil {
-		d.once("error|"+pluginID, func() { d.sidecarDown(pluginID, point) })
-		return nil
+	key := "error|" + pluginID
+	if errors.Is(err, ErrNoLiveSidecar) {
+		key = "sidecar|" + pluginID
+		if d.sidecarDown != nil {
+			d.once(key, func() { d.sidecarDown(pluginID, point) })
+			return nil
+		}
 	}
-	d.warnOnce("error|"+pluginID, fmt.Sprintf(
+	d.warnOnce(key, fmt.Sprintf(
 		"extension %s failed at %s; skipping this optional extension: %s",
 		pluginID, point, secrets.RedactCredentials(err.Error())))
 	return nil

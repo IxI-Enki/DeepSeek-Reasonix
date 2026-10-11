@@ -27,8 +27,11 @@ const { BrowserViews } = require("./browserviews");
 const { startBrowserRelay } = require("./browserrelay");
 const { groundFor } = require("./ground");
 const { loadPrefs, prefsFile, registerPrefs } = require("./prefs");
+const { stateFile, openWindow } = require("./windowstate");
+const { accelerationOff, shouldDisableGpu, graphicsHandler } = require("./graphics");
 const { createPowerGuard, keepsAwake } = require("./powerguard");
 const { openLogs, redactArgv, failStartup } = require("./shelllog");
+const { actHandler } = require("./acts");
 const { crashDir, recordHostExit, pendingHostExit, clearHostExit, hostExitNotice } = require("./hostexit");
 
 // A page in a minimized or fully covered window counts as hidden, and a hidden
@@ -63,6 +66,7 @@ const hostBinary = layout.hostBinary(where);
 const computerHelper = layout.computerHelper(where);
 const pageDir = layout.pageDir(where);
 
+const acts = actHandler({ app, showWindow: () => showWindow() });
 let kernel = null;
 let win = null;
 let origin = "";
@@ -126,7 +130,7 @@ async function launchKernel(args) {
           app.quit();
         }
       },
-      onAct: handOver,
+      onAct: (act) => acts(act),
     });
     const current = kernel;
     current.child.on("error", (err) => logs.shell.line(`host: spawn failed: ${err.message}`));
@@ -309,28 +313,34 @@ function createWindow() {
   const mac = process.platform === "darwin";
   const windows = process.platform === "win32";
   const chrome = mac || windows;
-  return new BrowserWindow({
-    ...fitted(),
-    ...appIcon(),
-    minWidth: MIN_SIZE.width,
-    minHeight: MIN_SIZE.height,
-    // Shown once it has been measured against the screen it landed on; sizing a
-    // visible window makes the correction a flicker.
-    show: false,
-    backgroundColor: ground(),
-    frame: !windows,
-    titleBarStyle: mac ? "hiddenInset" : "default",
-    ...(mac ? { trafficLightPosition: LIGHTS } : {}),
-    webPreferences: {
-      preload: path.join(__dirname, "preload.js"),
-      // Stated rather than left to the defaults: this is the list a reviewer
-      // reads to know what the renderer may reach.
-      nodeIntegration: false,
-      contextIsolation: true,
-      sandbox: true,
-      webviewTag: false,
-      webSecurity: true,
-      additionalArguments: [`--reasonix-titlebar=${chrome ? "1" : "0"}`],
+  return openWindow({
+    BrowserWindow,
+    screen,
+    file: stateFile(app.getPath("userData")),
+    fallback: fitted(),
+    min: MIN_SIZE,
+    options: {
+      ...appIcon(),
+      minWidth: MIN_SIZE.width,
+      minHeight: MIN_SIZE.height,
+      // Shown once it has been measured against the screen it landed on; sizing a
+      // visible window makes the correction a flicker.
+      show: false,
+      backgroundColor: ground(),
+      frame: !windows,
+      titleBarStyle: mac ? "hiddenInset" : "default",
+      ...(mac ? { trafficLightPosition: LIGHTS } : {}),
+      webPreferences: {
+        preload: path.join(__dirname, "preload.js"),
+        // Stated rather than left to the defaults: this is the list a reviewer
+        // reads to know what the renderer may reach.
+        nodeIntegration: false,
+        contextIsolation: true,
+        sandbox: true,
+        webviewTag: false,
+        webSecurity: true,
+        additionalArguments: [`--reasonix-titlebar=${chrome ? "1" : "0"}`],
+      },
     },
   });
 }
@@ -362,6 +372,8 @@ registerPrefs(ipcMain, () => prefsFile(app.getPath("userData")), fromWindow, () 
 nativeTheme.on("updated", () => {
   if (win && !win.isDestroyed()) win.setBackgroundColor(ground());
 });
+
+ipcMain.handle("shell:graphics", (event) => graphicsHandler(app, fromWindow, gpuLaunch)(event));
 
 ipcMain.handle("window:minimise", (event) => {
   fromWindow(event)?.minimize();
@@ -451,6 +463,11 @@ app.setName("Reasonix Studio");
 // already running owns those session files.
 const identity = instanceID(hostBinary);
 app.setPath("userData", profileFor(app.getPath("userData"), identity));
+// Chromium decides on the GPU before the app is ready, so this is the last
+// point a saved choice can still reach it.
+const savedPrefs = loadPrefs(prefsFile(app.getPath("userData")));
+const gpuLaunch = { launchedOff: shouldDisableGpu({ prefs: savedPrefs, env: process.env, argv: process.argv }), savedOff: accelerationOff(savedPrefs) };
+if (gpuLaunch.launchedOff) app.disableHardwareAcceleration();
 // A launch from a shortcut has no console, so this file is the only place a
 // failure before the window can be read back from.
 logs = openLogs(app.getPath("userData"));
@@ -507,21 +524,6 @@ async function hostLastWords() {
     });
   }
   return logs.host.tail();
-}
-
-// The acts a handover asks of the application. The kernel decides when: it has
-// downloaded and staged a replacement, and what is left is the part only this
-// process can do. They arrive in this order, so arming the restart before
-// ending is the sequence rather than a coincidence.
-//
-// Nothing is answered. Both are performed by ending, so an acknowledgement
-// would have to come from a process on its way out.
-function handOver(act) {
-  if (act === "relaunch") {
-    app.relaunch();
-    return;
-  }
-  if (act === "quit") app.quit();
 }
 
 // Before the handshake the only window is the starting one, and the launch

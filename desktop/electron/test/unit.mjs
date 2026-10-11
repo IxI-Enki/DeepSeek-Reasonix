@@ -1722,6 +1722,57 @@ test("the window ground follows the stored theme and, for auto, the system", () 
   assert.equal(groundFor(undefined, true), GROUND.dark);
 });
 
+const { accelerationOff, shouldDisableGpu, graphicsReport, graphicsHandler, PREF_KEY: GPU_PREF } = require("../src/graphics.js");
+
+test("hardware acceleration is off only when the saved preference says exactly that", () => {
+  assert.equal(GPU_PREF, "rx-hw-accel");
+  assert.equal(accelerationOff({}), false);
+  assert.equal(accelerationOff(undefined), false);
+  assert.equal(accelerationOff({ "rx-hw-accel": "on" }), false);
+  assert.equal(accelerationOff({ "rx-hw-accel": "" }), false);
+  assert.equal(accelerationOff({ "rx-hw-accel": "off" }), true);
+});
+
+test("the graphics report says what this launch applied and passes Electron's status through untouched", () => {
+  const app = (compositing) => ({ getGPUFeatureStatus: () => ({ gpu_compositing: compositing }) });
+  const auto = { launchedOff: false, savedOff: false };
+  for (const value of ["enabled", "enabled_force", "enabled_on", "disabled_software", "unavailable_off", ""]) {
+    assert.deepEqual(graphicsReport(app(value), auto), { ...auto, compositing: value });
+  }
+  assert.deepEqual(graphicsReport(app("disabled_software"), { launchedOff: true, savedOff: true }), { launchedOff: true, savedOff: true, compositing: "disabled_software" });
+  assert.deepEqual(graphicsReport(app("enabled"), { launchedOff: true, savedOff: false }), { launchedOff: true, savedOff: false, compositing: "enabled" });
+  assert.deepEqual(graphicsReport({ getGPUFeatureStatus: () => { throw new Error("not ready"); } }, auto), { ...auto, compositing: "" });
+  assert.deepEqual(graphicsReport({ getGPUFeatureStatus: () => ({}) }, auto), { ...auto, compositing: "" });
+});
+
+test("the GPU is disabled by the saved preference, the environment or the flag, and only then", () => {
+  const off = (over) => shouldDisableGpu({ prefs: {}, env: {}, argv: [], ...over });
+  assert.equal(off({}), false);
+  assert.equal(off({ prefs: { "rx-hw-accel": "off" } }), true);
+  assert.equal(off({ prefs: { "rx-hw-accel": "on" } }), false);
+  assert.equal(off({ prefs: undefined }), false);
+  assert.equal(off({ env: { REASONIX_DISABLE_GPU: "1" } }), true);
+  assert.equal(off({ env: { REASONIX_DISABLE_GPU: "0" } }), false);
+  assert.equal(off({ argv: ["studio", "--disable-gpu"] }), true);
+  assert.equal(off({ argv: ["--disable-gpu-sandbox"] }), false);
+});
+
+test("a prefs file that is missing or corrupt keeps hardware acceleration", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "gpu-"));
+  const file = path.join(dir, "window-prefs.json");
+  assert.equal(shouldDisableGpu({ prefs: loadPrefs(file), env: {}, argv: [] }), false);
+  fs.writeFileSync(file, "{ not json");
+  assert.equal(shouldDisableGpu({ prefs: loadPrefs(file), env: {}, argv: [] }), false);
+});
+
+test("the graphics report is refused to any sender that is not the Studio window", () => {
+  const app = { getGPUFeatureStatus: () => ({ gpu_compositing: "enabled" }) };
+  const win = { id: "studio" };
+  const handle = graphicsHandler(app, (event) => (event.sender === "studio" ? win : null), { launchedOff: true, savedOff: false });
+  assert.deepEqual(handle({ sender: "studio" }), { launchedOff: true, savedOff: false, compositing: "enabled" });
+  assert.equal(handle({ sender: "agent-browser-page" }), null);
+});
+
 test("a kernel that dies after its handshake leaves its exit and last words in shell.log and a marker for the next launch", () => {
   const { openLogs } = require("../src/shelllog.js");
   const { crashDir, recordHostExit, pendingHostExit, clearHostExit } = require("../src/hostexit.js");
@@ -1771,4 +1822,230 @@ test("the notice names where the logs are in both languages and shows how it end
   assert.match(zh.message, /内核/);
   assert.match(en.detail, /code 2/);
   assert.match(zh.detail, /2/);
+});
+
+test("packaging: an rpm fpm spelled x86_64 leaves the build as the release arch", async () => {
+  const arch = require("../packaging/arch.js");
+  const hook = require("../packaging/canonical-artifact-names.js");
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "rpm-name-"));
+  const deb = path.join(dir, "ReasonixStudio-linux-amd64.deb");
+  const rpm = path.join(dir, "ReasonixStudio-linux-x86_64.rpm");
+  fs.writeFileSync(deb, "d");
+  fs.writeFileSync(rpm, "r");
+  arch.record(deb, "x64");
+  arch.record(rpm, "x64");
+  const out = await hook({ artifactPaths: [deb, rpm] });
+  assert.deepEqual(out.map((f) => path.basename(f)), ["ReasonixStudio-linux-amd64.deb", "ReasonixStudio-linux-amd64.rpm"]);
+  assert.ok(fs.existsSync(path.join(dir, "ReasonixStudio-linux-amd64.rpm")));
+  assert.ok(!fs.existsSync(rpm));
+});
+
+test("packaging: a name still carrying an fpm spelling is refused", async () => {
+  const arch = require("../packaging/arch.js");
+  const hook = require("../packaging/canonical-artifact-names.js");
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "rpm-name-"));
+  const stray = path.join(dir, "ReasonixStudio-linux-aarch64.rpm");
+  fs.writeFileSync(stray, "r");
+  arch.record(stray, "x64");
+  await assert.rejects(hook({ artifactPaths: [stray] }), /aarch64/);
+});
+
+test("packaging: a Windows installer named for x64 is renamed to amd64", async () => {
+  const arch = require("../packaging/arch.js");
+  const hook = require("../packaging/canonical-artifact-names.js");
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "win-name-"));
+  const installer = path.join(dir, "ReasonixStudio-windows-x64-installer.exe");
+  const zip = path.join(dir, "ReasonixStudio-windows-x64.zip");
+  for (const f of [installer, zip]) {
+    fs.writeFileSync(f, "x");
+    arch.record(f, "x64");
+  }
+  const out = await hook({ artifactPaths: [installer, zip] });
+  assert.deepEqual(
+    out.map((f) => path.basename(f)),
+    ["ReasonixStudio-windows-amd64-installer.exe", "ReasonixStudio-windows-amd64.zip"],
+  );
+});
+
+const { stateFile, loadState, saveState, placement, track } = require("../src/windowstate.js");
+const { EventEmitter } = require("node:events");
+
+const AREA = { x: 0, y: 0, width: 1920, height: 1040 };
+const SECOND = { x: 1920, y: 0, width: 1280, height: 1000 };
+const MIN = { width: 760, height: 480 };
+const FALLBACK = { width: 1440, height: 900 };
+const open = (saved, areas = [AREA, SECOND]) => placement({ saved, areas, primary: areas[0], fallback: FALLBACK, min: MIN });
+
+test("window state: only a whole rectangle is read back, and it survives a round trip", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "winstate-"));
+  const file = stateFile(dir);
+  assert.equal(loadState(file), null);
+  fs.writeFileSync(file, "{not json");
+  assert.equal(loadState(file), null);
+  for (const bad of [{ width: 0, height: 500 }, { width: "900", height: 500 }, { width: 900.5, height: 500 }, [], null]) {
+    fs.writeFileSync(file, JSON.stringify(bad));
+    assert.equal(loadState(file), null, JSON.stringify(bad));
+  }
+  saveState(file, { x: 40, y: 60, width: 1000, height: 700, maximized: true });
+  assert.deepEqual(loadState(file), { x: 40, y: 60, width: 1000, height: 700, maximized: true });
+  fs.writeFileSync(file, JSON.stringify({ width: 1000, height: 700 }));
+  assert.deepEqual(loadState(file), { width: 1000, height: 700, maximized: false });
+});
+
+test("window state: a first launch opens at the default size and a saved rectangle is reopened as it was", () => {
+  assert.deepEqual(open(null), { ...FALLBACK, maximized: false });
+  const saved = { x: 300, y: 120, width: 1100, height: 760, maximized: false };
+  assert.deepEqual(open(saved), saved);
+  assert.deepEqual(open({ ...saved, x: 2100, y: 100 }), { ...saved, x: 2100, y: 100 });
+});
+
+test("window state: a rectangle no display shows keeps its size and loses its place", () => {
+  const gone = { x: 2400, y: 100, width: 1100, height: 760, maximized: false };
+  assert.deepEqual(open(gone, [AREA]), { width: 1100, height: 760, maximized: false });
+  const above = { x: 300, y: -500, width: 1100, height: 760, maximized: false };
+  assert.deepEqual(open(above, [AREA]), { width: 1100, height: 760, maximized: false });
+  const huge = { x: 5000, y: 0, width: 4000, height: 3000, maximized: true };
+  assert.deepEqual(open(huge, [AREA]), { width: 1920, height: 1040, maximized: true });
+});
+
+test("window state: a saved size is raised to the layout's floor", () => {
+  const small = open({ x: 10, y: 10, width: 300, height: 200, maximized: false });
+  assert.deepEqual([small.width, small.height], [760, 480]);
+});
+
+function fakeWindow(normal) {
+  const win = new EventEmitter();
+  Object.assign(win, { maximized: false, destroyed: false, normal });
+  win.getNormalBounds = () => win.normal;
+  win.isMaximized = () => win.maximized;
+  win.isDestroyed = () => win.destroyed;
+  win.minimized = false;
+  win.fullscreen = false;
+  win.isMinimized = () => win.minimized;
+  win.isFullScreen = () => win.fullscreen;
+  return win;
+}
+
+test("window state: moves are written once they settle, a close is written at once, and a maximised window keeps its normal bounds", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "winstate-"));
+  const file = stateFile(dir);
+  const timers = [];
+  const win = fakeWindow({ x: 10, y: 20, width: 900, height: 600 });
+  track(win, file, { timer: (fn) => timers.push(fn) - 1, untimer: (id) => (timers[id] = () => {}) });
+  win.emit("resize");
+  win.emit("move");
+  win.emit("resize");
+  assert.equal(loadState(file), null);
+  timers.at(-1)();
+  assert.deepEqual(loadState(file), { x: 10, y: 20, width: 900, height: 600, maximized: false });
+  win.normal = { x: 50, y: 60, width: 1000, height: 650 };
+  win.maximized = true;
+  win.emit("close");
+  assert.deepEqual(loadState(file), { x: 50, y: 60, width: 1000, height: 650, maximized: true });
+  win.destroyed = true;
+  win.normal = { x: 1, y: 1, width: 5, height: 5 };
+  win.emit("move");
+  timers.at(-1)();
+  assert.equal(loadState(file).width, 1000);
+});
+
+test("window state: a minimised or full-screen close keeps the last settled record", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "winstate-"));
+  const file = stateFile(dir);
+  const win = fakeWindow({ x: 10, y: 20, width: 900, height: 600 });
+  track(win, file, { timer: () => 0, untimer: () => {} });
+  win.emit("close");
+  const kept = loadState(file);
+  win.normal = { x: 0, y: 0, width: 1920, height: 1040 };
+  win.minimized = true;
+  win.emit("close");
+  assert.deepEqual(loadState(file), kept);
+  win.minimized = false;
+  win.fullscreen = true;
+  win.emit("close");
+  assert.deepEqual(loadState(file), kept);
+});
+
+test("window state: a saved size is cut to the display it opens on and the window is moved in", () => {
+  const big = { x: 1700, y: 600, width: 1400, height: 900, maximized: false };
+  const out = open(big, [AREA]);
+  assert.deepEqual([out.width, out.height], [1400, 900].map((v, i) => Math.min(v, [1920, 1040][i])));
+  assert.ok(out.x + out.width <= 1920 && out.y + out.height <= 1040, JSON.stringify(out));
+  const small = { x: 100, y: 100, width: 1800, height: 1000, maximized: false };
+  const cut = open(small, [{ x: 0, y: 0, width: 1366, height: 728 }]);
+  assert.deepEqual(cut, { x: 0, y: 0, width: 1366, height: 728, maximized: false });
+});
+
+test("kernel acts: show brings the window forward, relaunch arms the restart, quit ends, anything else is ignored", () => {
+  const { actHandler } = require("../src/acts.js");
+  const calls = [];
+  const handle = actHandler({
+    app: { relaunch: () => calls.push("relaunch"), quit: () => calls.push("quit") },
+    showWindow: () => calls.push("show"),
+  });
+  for (const act of ["show", "relaunch", "quit", "unknown"]) handle(act);
+  assert.deepEqual(calls, ["show", "relaunch", "quit"]);
+});
+
+test("tray: the menu is replaced only when what it says changes, so an open menu is not torn down by the poll", async () => {
+  const { installTray } = require("../src/tray.js");
+  const menus = [];
+  let tips = 0;
+  class FakeTray {
+    on() {}
+    setImage() {}
+    setToolTip() { tips++; }
+    setContextMenu(menu) { menus.push(menu); }
+    destroy() {}
+  }
+  const electron = {
+    Menu: { buildFromTemplate: (template) => ({ template }) },
+    Tray: FakeTray,
+    nativeImage: { createFromPath: () => ({ isEmpty: () => false }), createFromBuffer: () => ({ isEmpty: () => false }) },
+    screen: { getPrimaryDisplay: () => ({ scaleFactor: 1 }), on() {}, removeListener() {} },
+  };
+  let fold = { line: "1 running", labels: { open: "Open", quit: "Quit", closeToTray: "Keep running" } };
+  const host = { trayPrefs: async () => ({ closeToTray: false }), trayState: async () => fold, setTrayPrefs: async () => ({ closeToTray: true }) };
+  const tray = installTray(host, { onOpen() {}, onQuit() {} }, electron);
+  await tray.refresh();
+  await tray.refresh();
+  await tray.refresh();
+  assert.equal(menus.length, 1, "three identical reads rebuilt the menu");
+  assert.equal(tips, 1);
+  fold = { ...fold, line: "2 running" };
+  await tray.refresh();
+  assert.equal(menus.length, 2);
+  assert.equal(menus[1].template.find((item) => item.enabled === false).label, "2 running");
+  tray.close();
+});
+
+test("tray: a refused close-to-tray save redraws the checkbox, and a menu that failed to draw is tried again", async () => {
+  const { installTray } = require("../src/tray.js");
+  const menus = [];
+  let failNext = false;
+  class FakeTray {
+    on() {}
+    setImage() {}
+    setToolTip() {}
+    setContextMenu(menu) { if (failNext) { failNext = false; throw new Error("indicator busy"); } menus.push(menu); }
+    destroy() {}
+  }
+  const electron = {
+    Menu: { buildFromTemplate: (template) => ({ template }) },
+    Tray: FakeTray,
+    nativeImage: { createFromPath: () => ({ isEmpty: () => false }), createFromBuffer: () => ({ isEmpty: () => false }) },
+    screen: { getPrimaryDisplay: () => ({ scaleFactor: 1 }), on() {}, removeListener() {} },
+  };
+  const fold = { line: "idle", labels: { open: "Open", quit: "Quit", closeToTray: "Keep running" } };
+  const host = { trayPrefs: async () => ({ closeToTray: false }), trayState: async () => fold, setTrayPrefs: async () => null };
+  const tray = installTray(host, { onOpen() {}, onQuit() {} }, electron);
+  failNext = true;
+  await assert.rejects(tray.refresh());
+  await tray.refresh();
+  assert.equal(menus.length, 1, "a menu whose draw threw was never retried");
+  const toggle = menus[0].template.find((item) => item.type === "checkbox");
+  await toggle.click();
+  assert.equal(menus.length, 2, "a refused save left the flipped checkbox on screen");
+  assert.equal(menus[1].template.find((item) => item.type === "checkbox").checked, false);
+  tray.close();
 });

@@ -33,6 +33,11 @@ type BranchMeta struct {
 	// without moving or deleting its transcript. Keeping this as metadata makes
 	// archive/unarchive atomic and preserves every sidecar needed to resume it.
 	Archived bool `json:"archived,omitempty"`
+	// Pinned is the user's "keep this": automatic archiving never touches it.
+	Pinned bool `json:"pinned,omitempty"`
+	// AutoArchivedAt is set only by the automatic sweep and cleared on restore;
+	// it is what lets a window say "N conversations were archived for you".
+	AutoArchivedAt time.Time `json:"auto_archived_at,omitzero"`
 	// FinishedAt and ViewedAt are the two facts behind Unread. Both are optional:
 	// a sidecar written before they existed reads as seen.
 	FinishedAt time.Time `json:"finished_at,omitzero"`
@@ -148,7 +153,14 @@ func BranchMetaPath(sessionPath string) string {
 	return store.SessionMeta(sessionPath)
 }
 
+// branchMetaReadHook, when set, is told of every sidecar read; tests count
+// reads through it.
+var branchMetaReadHook func(sessionPath string)
+
 func LoadBranchMeta(sessionPath string) (BranchMeta, bool, error) {
+	if branchMetaReadHook != nil {
+		branchMetaReadHook(sessionPath)
+	}
 	metaPath := BranchMetaPath(sessionPath)
 	if metaPath == "" {
 		return BranchMeta{}, false, nil
@@ -251,6 +263,17 @@ func SaveBranchMetaPreserveUpdatedLocked(sessionPath string, m BranchMeta) error
 }
 
 func saveBranchMeta(sessionPath string, m BranchMeta, touchUpdated bool) error {
+	var persisted *BranchMeta
+	if existing, ok, err := LoadBranchMeta(sessionPath); err == nil && ok {
+		persisted = &existing
+	}
+	return saveBranchMetaAfter(sessionPath, m, touchUpdated, persisted)
+}
+
+// saveBranchMetaAfter is saveBranchMeta for a caller that holds the meta lock
+// and has just read the sidecar itself: persisted is that read (nil when there
+// was no sidecar), so the file is not read a second time within one transaction.
+func saveBranchMetaAfter(sessionPath string, m BranchMeta, touchUpdated bool, persisted *BranchMeta) error {
 	metaPath := BranchMetaPath(sessionPath)
 	if metaPath == "" {
 		return fmt.Errorf("empty session path")
@@ -265,8 +288,8 @@ func saveBranchMeta(sessionPath string, m BranchMeta, touchUpdated bool) error {
 	if touchUpdated || m.UpdatedAt.IsZero() {
 		m.UpdatedAt = now
 	}
-	if existing, ok, err := LoadBranchMeta(sessionPath); err == nil && ok {
-		preserveBranchMetaPersistence(&m, existing)
+	if persisted != nil {
+		preserveBranchMetaPersistence(&m, *persisted)
 	}
 	if err := os.MkdirAll(filepath.Dir(metaPath), 0o755); err != nil {
 		return err
@@ -345,11 +368,24 @@ func ensureBranchMetaUnlocked(sessionPath string) (BranchMeta, error) {
 	return m, saveBranchMeta(sessionPath, m, false)
 }
 
-// SetSessionArchived changes only the catalog state of a transcript. The
-// conversation and all of its artifacts stay in place so unarchive is lossless.
+// SetSessionArchived changes only catalog state; nothing is moved or deleted.
+// Archiving drops the pin, and restoring counts as activity so an automatic
+// sweep does not archive the conversation again.
 func SetSessionArchived(sessionPath string, archived bool) error {
-	return UpdateBranchMeta(sessionPath, false, func(m *BranchMeta) error {
+	return UpdateBranchMeta(sessionPath, !archived, func(m *BranchMeta) error {
 		m.Archived = archived
+		m.AutoArchivedAt = time.Time{}
+		if archived {
+			m.Pinned = false
+		}
+		return nil
+	})
+}
+
+// SetSessionPinned marks a conversation automatic archiving must leave alone.
+func SetSessionPinned(sessionPath string, pinned bool) error {
+	return UpdateBranchMeta(sessionPath, false, func(m *BranchMeta) error {
+		m.Pinned = pinned
 		return nil
 	})
 }
@@ -622,6 +658,7 @@ func UpdateSessionMeta(sessionPath, model, preview string, turns int, markActivi
 	if err != nil {
 		return err
 	}
+	persisted := m
 	if strings.TrimSpace(model) != "" {
 		m.Model = strings.TrimSpace(model)
 	}
@@ -634,5 +671,5 @@ func UpdateSessionMeta(sessionPath, model, preview string, turns int, markActivi
 	// These counts were derived from the current content, so mark them
 	// authoritative — listing can then trust Turns (even 0) without re-decoding.
 	m.SchemaVersion = BranchMetaCountsVersion
-	return saveBranchMeta(sessionPath, m, markActivity)
+	return saveBranchMetaAfter(sessionPath, m, markActivity, &persisted)
 }

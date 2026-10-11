@@ -12,14 +12,20 @@ export function thoughtStartedAt(id: string): number | undefined {
   return thoughtSince.get(id);
 }
 
+const isWaitingLine = (item: Item) => item.t === "user" && !!item.pending;
+
 export function appendText(items: Item[], text: string, field: "text" | "reasoning", source?: string, model?: string): Item[] {
-  const last = items[items.length - 1];
+  // A line typed while the model is still writing waits in the transcript after
+  // the open message without being part of it, so the message continues past it.
+  let at = items.length - 1;
+  while (at >= 0 && isWaitingLine(items[at])) at--;
+  const last = items[at];
   if (last && last.t === "say" && !last.done) {
     const next = items.slice();
     // Thinking runs until the first answer token, so the clock is the gap
     // between the two streams, not the length of either.
     const stop = field === "text" && last.thoughtMs === undefined && last.reasoning;
-    next[next.length - 1] = {
+    next[at] = {
       ...last,
       [field]: (last[field] ?? "") + text,
       ...(stop ? { thoughtMs: Date.now() - (thoughtSince.get(last.id) ?? Date.now()) } : null),

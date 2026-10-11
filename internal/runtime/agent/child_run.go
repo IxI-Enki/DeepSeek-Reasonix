@@ -71,6 +71,7 @@ func RunSubAgentWithSession(ctx context.Context, prov provider.Provider, reg *to
 	// Nested reasoning stays isolated; the parent consumes only final Content.
 	// Require it so a reasoning-only stop cannot fall back to older tool text.
 	opts.RequireVisibleFinal = true
+	ctx = WithoutRunTimeSink(ctx)
 	sub := newDelegatedAgent(ctx, prov, reg, sess, opts, sink)
 	// One defer: this returns from a salvage, a review failure, a provider
 	// error and a clean answer, and per-path calls would miss one.

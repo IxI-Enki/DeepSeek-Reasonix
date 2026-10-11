@@ -153,7 +153,7 @@
     --chrome-h: 51px; --lights-w: 96px; --lights-h: var(--chrome-h);
   }
   [data-titlebar="app"][data-platform="darwin"] .app[data-rail="off"] .chrome {
-    padding-left: calc(var(--lights-w) - var(--nav-w));
+    padding-left: calc(var(--lights-w) + 50px - var(--nav-w));
   }
   [data-titlebar="app"][data-platform="darwin"] .app[data-rail="on"] .studio-rail-head {
     padding-top: var(--lights-h); -webkit-app-region: drag;
@@ -551,10 +551,10 @@
   [data-rail="off"] .rail, .app:not([data-side="on"]) .side { opacity: 0; transition: opacity var(--m-exit) }
 
   .gutter {
-    position: absolute; top: 0; bottom: 0; width: 11px; z-index: 5;
+    position: absolute; top: 0; bottom: 0; width: 7px; z-index: 5;
     cursor: col-resize; touch-action: none;
   }
-  .gutter-l { left: -6px; z-index: 13 }
+  .gutter-l { left: -1px; z-index: 13 }
   .gutter-r { right: -6px }
   .gutter::after {
     content: ""; position: absolute; top: 0; bottom: 0; left: 50%; width: 2px; margin-left: -1px;
@@ -571,7 +571,7 @@
   @keyframes edgebump { 0%, 100% { transform: none } 40% { transform: translateX(var(--bump, 0px)) } }
   .gutter:focus-visible { outline: 2px solid var(--focus); outline-offset: -3px; border-radius: var(--r-xs) }
 
-  .gutter[data-shut] { width: 14px }
+  .gutter[data-shut] { width: 14px; top: 50%; bottom: auto; height: 46px; margin-top: -23px }
   [data-rail="off"] .gutter-l { left: 0 }
   [data-rail="off"] .gutter-l .grip { margin-left: -6px }
   .grip {
@@ -744,7 +744,7 @@
      and the composer's; a child of the body would stop at the composer's edge. */
   .pane:has(> .pbody[data-dock]) {
     display: grid;
-    grid-template: "nav nav" auto "find find" auto "body side" minmax(0, 1fr) "compose side" auto / minmax(0, 1fr) var(--dock-w);
+    grid-template: "nav side" auto "find side" auto "body side" minmax(0, 1fr) "compose side" auto / minmax(var(--dock-left-min), 1fr) minmax(0, var(--dock-w));
   }
   .pane:has(> .pbody[data-dock]) > .tabs { grid-area: nav }
   .pane:has(> .pbody[data-dock]) > .findhost { grid-area: find }
@@ -757,7 +757,8 @@
     position: relative; inset: auto; grid-area: side; justify-self: start; align-self: stretch;
     width: 11px; margin-left: -6px; z-index: 6;
   }
-  .app[data-browser="off"] .pane > .gutter-r { margin-left: -14px }
+  .pane:has(> .pbody[data-dock]) > .pbody { padding-right: 6px }
+  .pane:has(> .pbody[data-dock]) > .gutter-r[data-shut] { width: 14px; margin: 0 0 0 -30px; align-self: center }
   .app[data-browser="off"] .pane:has(> .pbody[data-dock]) > .scroll[data-pane="browser"] { visibility: hidden; transition-property: visibility; transition-duration: 0s; transition-delay: var(--t-panel) }
   .pane:has(> .pbody[data-dock]) .workbench-body:not([data-files]) { grid-template-columns: minmax(0, 1fr) }
   .pane:has(> .pbody[data-dock]) .workbench-body:not([data-files]) .workbench-explorer { display: none }
@@ -906,11 +907,6 @@
   }
 
   .chunk { display: flow-root }
-
-  .chunk > .enterbox > .call {
-    content-visibility: auto;
-    contain-intrinsic-size: auto 216px;
-  }
 
   .flow-end { height: 1px; margin-top: -1px }
 
@@ -1660,7 +1656,7 @@
     margin: 0 auto 18px;
     width: calc(100% - var(--srail-w) * 2 - var(--flow-pad) * 2);
 
-    --aux-budget: min(calc(34vh / var(--zoom, 1)), 320px);
+    --aux-budget: min(calc(34vh / var(--zoom, 1)), 320px); --notes-floor: 9.5rem;
     max-width: calc(var(--doc) - var(--flow-pad) * 2);
 
     --pad-x: 15px; --pad-b: 11px;
@@ -1673,12 +1669,12 @@
 
   .composeaux {
     display: flex; flex-direction: column; min-height: 0; overflow: hidden;
-    max-height: calc(var(--aux-budget) * .72);
+    max-height: max(calc(var(--aux-budget) - max(calc(var(--aux-budget) * .28), var(--notes-floor))), 3.5rem);
   }
   .composeaux > * { min-height: 0 }
 
   .composenotes {
-    max-height: calc(var(--aux-budget) * .28);
+    max-height: max(calc(var(--aux-budget) * .28), var(--notes-floor));
     overflow-y: auto; overscroll-behavior: contain;
   }
 
@@ -2316,14 +2312,14 @@
   .railveil { display: none }
   [data-fold~="scene"] .cols { grid-template-columns: var(--nav-w) 0 minmax(0, 1fr) var(--side-w) }
   [data-fold~="scene"] :is(.gutter-l, .pane > .gutter-r) { display: none }
-  [data-fold~="scene"] .app[data-browser="on"] .pane:has(> .pbody[data-dock]) { grid-template-columns: 0 minmax(0, 1fr) }
+  [data-fold~="scene"] .app[data-browser="on"] .pane:has(> .pbody[data-dock]) { grid-template: "nav nav" auto "find find" auto "side side" minmax(0, 1fr) / 0 minmax(0, 1fr) }
   [data-fold~="scene"] .app[data-browser="on"] .pane:has(> .pbody[data-dock]) > :is(.pbody, .compose) { display: none }
   [data-fold~="scene"] .app[data-browser="on"] .pane:has(> .pbody[data-dock]) > .scroll[data-pane="browser"] { border-left: 0 }
   [data-fold~="scene"] .app[data-rail="on"] .railveil {
     display: block; position: fixed; inset: 0; z-index: 11; padding: 0; border: 0;
     background: color-mix(in srgb, #000 34%, transparent); cursor: default;
   }
-  [data-fold~="short"] .compose { --aux-budget: min(calc(24vh / var(--zoom, 1)), 176px) }
+  [data-fold~="short"] .compose { --aux-budget: min(calc(24vh / var(--zoom, 1)), 176px); --notes-floor: 0px }
   [data-fold~="short"] .compose textarea { max-height: min(calc(var(--read, 15px) * 9.6), calc(24vh / var(--zoom, 1))) }
   [data-fold~="short"] .slashmenu { max-height: min(calc(38vh / var(--zoom, 1)), 220px) }
   [data-fold~="short"][data-fold~="side"] .side { max-height: calc(26vh / var(--zoom, 1)) }
@@ -3387,7 +3383,7 @@
     background: var(--accent-ink); transition: width var(--m-panel) ;
   }
   .cmp .note { margin-top: 8px }
-  .threshold-control { width: min(360px, 100%); display: flex; align-items: center; gap: 7px }
+  .threshold-row { flex-wrap: wrap } .threshold-row .tx { flex-basis: 14em } .threshold-control { width: min(360px, 100%); display: flex; align-items: center; gap: 7px }
   .threshold-control .unit-field { flex: 1 }
   .threshold-control input { height: 30px; padding: 4px 8px; color: var(--text); font: var(--w-reg) var(--fs-ui) var(--mono) }
   .threshold-presets { display: flex; align-items: center; gap: 3px }
@@ -3825,8 +3821,8 @@
     background: color-mix(in srgb, var(--warn) 8%, transparent);
     color: var(--warn-ink);
   }
-  .rtbar .t { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; font-weight: var(--w-med) }
-  .rtbar .why { flex: 1; min-width: 0; color: var(--ghost); word-break: break-word }
+  .rtbar .t { flex: 1 1 0; min-width: 12rem; overflow-wrap: anywhere; font-weight: var(--w-med) }
+  .rtbar .why { order: 1; flex: 1 0 100%; min-width: 0; color: var(--ghost); word-break: break-word }
   .rtbar button {
     flex: none; border: 0; background: transparent; cursor: pointer; color: inherit;
     font: var(--w-med) var(--fs-meta) var(--ui); text-decoration: underline; text-underline-offset: 3px;
@@ -3839,9 +3835,9 @@
   .rc { margin: 4px 0 2px }
   .rc-ok {
     display: flex; flex-direction: row; align-items: baseline; gap: 8px;
-    font: var(--w-reg) var(--fs-ui)/1.6 var(--ui); color: var(--ghost);
+    font: var(--w-reg) var(--fs-ui)/1.6 var(--ui); color: var(--ghost); background: none; border: 0; padding: 0; text-align: start; cursor: pointer;
   }
-  .rc-ok .rc-tick { flex: none; color: var(--ok) }
+  .rc-ok .rc-tick { flex: none; color: var(--rc-c, var(--ok)) }
   .rc-ok .rc-t { flex: none }
   .rc-ok .rc-src { min-width: 0; font: var(--w-reg) var(--fs-meta) var(--mono); color: var(--faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
   .rc-hd { padding: 8px 0 2px; font: var(--w-reg) var(--fs-meta) var(--ui); color: var(--ghost) }
@@ -4564,6 +4560,12 @@
 
   .sessrow:hover .sessmeta, .sessrow[data-on] .sessmeta { color: var(--faint) }
 
+  .sessarch { flex: none; margin-left: 6px; font: var(--w-med) var(--fs-micro) var(--ui); font-style: normal; color: var(--ghost) }
+  .errbar[data-kind="note"] { border-color: var(--border); background: var(--surface); color: var(--text) }
+  .errbar[data-kind="note"] button { color: var(--text) }
+  .cmpalert > .errbar[data-kind="note"],
+  .composenotes > .errbar[data-kind="note"],
+  .main > .errbar[data-kind="note"] { top: 106px; bottom: auto }
   .sesscopies {
     flex: none; padding: 0 5px; height: 15px;
     border: 1px solid var(--border); border-radius: var(--r-xs);

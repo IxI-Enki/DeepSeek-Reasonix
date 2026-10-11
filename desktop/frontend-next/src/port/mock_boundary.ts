@@ -1,5 +1,6 @@
 import type { Adjudications, BrowserToolsSettings, ConfigProblem, ConfigRepair, PermissionLists, PermissionRules, SandboxSettings } from "./port";
-import type { DisplayCurrencyMode, DisplayCurrencySettings, ProgressWatchSettings } from "./boundary";
+import type { AskTimeoutSettings, AutoArchiveSettings, ChangedFilesSettings, FoldWorkSettings, DisplayCurrencyMode, DisplayCurrencySettings, ProgressWatchSettings, WorkspaceRoots, ReceiptSettings } from "./boundary";
+import { HttpError } from "./http_error";
 import { MockShell } from "./mock_shell";
 
 // The boundary half of the fixture: what the agent is refused outright, and how
@@ -95,6 +96,38 @@ export class MockBoundary extends MockShell {
     return { ...this.jail };
   }
 
+  private roots: WorkspaceRoots = { primary: "/Users/you/code/site", extra: [] };
+
+  // The kernel's refusals, by the same codes: a path that is not absolute, one
+  // already inside the workspace, and one it will not grant.
+  private refuseRoot(code: string): never {
+    throw new HttpError(400, "this folder cannot be added", { code });
+  }
+
+  async workspaceRoots(): Promise<WorkspaceRoots> {
+    return { ...this.roots, extra: [...this.roots.extra] };
+  }
+
+  async addWorkspaceRoot(path: string): Promise<WorkspaceRoots> {
+    const dir = path.trim();
+    if (!/^([a-zA-Z]:)?[\\/]/.test(dir)) this.refuseRoot("workspace_roots.not_directory");
+    if (dir === this.roots.primary || dir.startsWith(this.roots.primary + "/")) this.refuseRoot("workspace_roots.covered_by_primary");
+    if (dir === "/" || dir === "/Users/you") this.refuseRoot("workspace_roots.too_broad");
+    if (dir.includes(".ssh")) this.refuseRoot("workspace_roots.protected");
+    if (dir.startsWith("/var/root")) this.refuseRoot("workspace_roots.not_owned");
+    if (dir === "/tmp" || this.roots.extra.some((p) => dir.startsWith(p + "/"))) this.refuseRoot("workspace_roots.overlaps_write_root");
+    // The kernel records the resolved path, not the spelling: a trailing slash
+    // goes and a symlink is followed.
+    const resolved = (dir.length > 1 ? dir.replace(/[\\/]+$/, "") : dir).replace("/Users/you/link", "/Users/you/real");
+    if (!this.roots.extra.includes(resolved)) this.roots = { ...this.roots, extra: [...this.roots.extra, resolved] };
+    return this.workspaceRoots();
+  }
+
+  async removeWorkspaceRoot(path: string): Promise<WorkspaceRoots> {
+    this.roots = { ...this.roots, extra: this.roots.extra.filter((p) => p !== path) };
+    return this.workspaceRoots();
+  }
+
   async browserTools(): Promise<BrowserToolsSettings> {
     return { ...this.browser };
   }
@@ -102,6 +135,18 @@ export class MockBoundary extends MockShell {
   async saveBrowserTools(enabled: boolean): Promise<BrowserToolsSettings> {
     this.browser = { ...this.browser, enabled, effective: enabled };
     return { ...this.browser };
+  }
+
+  private archive: AutoArchiveSettings = { enabled: false, days: 30, defaultDays: 30, path: "/Users/you/.reasonix/config.toml" };
+
+  async autoArchive(): Promise<AutoArchiveSettings> {
+    return { ...this.archive };
+  }
+
+  async saveAutoArchive(s: Pick<AutoArchiveSettings, "enabled" | "days">): Promise<AutoArchiveSettings> {
+    if (s.days < 1 || s.days > 3650) throw new Error("auto archive setting out of range");
+    this.archive = { ...this.archive, ...s };
+    return { ...this.archive };
   }
 
   private currency: DisplayCurrencySettings = { mode: "auto", path: "/Users/you/.reasonix/config.toml" };
@@ -115,10 +160,54 @@ export class MockBoundary extends MockShell {
     return { ...this.currency };
   }
 
+  private changedFiles: ChangedFilesSettings = { show: true, path: "/Users/you/.reasonix/config.toml" };
+
+  async changedFilesSettings(): Promise<ChangedFilesSettings> {
+    return { ...this.changedFiles };
+  }
+
+  async saveChangedFilesSettings(show: boolean): Promise<ChangedFilesSettings> {
+    this.changedFiles = { ...this.changedFiles, show };
+    return { ...this.changedFiles };
+  }
+
+  private foldWork: FoldWorkSettings = { fold: false, path: "/Users/you/.reasonix/config.toml" };
+
+  async foldWorkSettings(): Promise<FoldWorkSettings> {
+    return { ...this.foldWork };
+  }
+
+  async saveFoldWorkSettings(fold: boolean): Promise<FoldWorkSettings> {
+    this.foldWork = { ...this.foldWork, fold };
+    return { ...this.foldWork };
+  }
+
   private watch: ProgressWatchSettings = {
     pause: false, rounds: 20, tokenMultiple: 8, defaultRounds: 20, defaultTokenMultiple: 8,
     path: "/Users/you/.reasonix/config.toml",
   };
+
+  private ask: AskTimeoutSettings = { seconds: 0, defaultSeconds: 300, minSeconds: 10, maxSeconds: 86400, path: "/Users/you/.reasonix/config.toml" };
+
+  async askTimeout(): Promise<AskTimeoutSettings> {
+    return { ...this.ask };
+  }
+
+  async saveAskTimeout(seconds: number): Promise<AskTimeoutSettings> {
+    if (seconds !== 0 && (seconds < this.ask.minSeconds || seconds > this.ask.maxSeconds)) throw new Error("ask timeout out of range");
+    this.ask = { ...this.ask, seconds };
+    return { ...this.ask };
+  }
+  private receipt: ReceiptSettings = { show: false, path: "/Users/you/.reasonix/config.toml" };
+
+  async receiptSettings(): Promise<ReceiptSettings> {
+    return { ...this.receipt };
+  }
+
+  async saveReceiptSettings(show: boolean): Promise<ReceiptSettings> {
+    this.receipt = { ...this.receipt, show };
+    return { ...this.receipt };
+  }
 
   async progressWatch(): Promise<ProgressWatchSettings> {
     return { ...this.watch };

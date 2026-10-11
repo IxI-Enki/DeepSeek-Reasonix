@@ -47,6 +47,14 @@ func (o *Owner) SetSessionID(id func() string) {
 	o.mu.Unlock()
 }
 
+// SessionID is the identity this owner currently claims under.
+func (o *Owner) SessionID() string {
+	if o == nil {
+		return ""
+	}
+	return o.sessionID()
+}
+
 func (o *Owner) sessionID() string {
 	o.mu.Lock()
 	id := o.scope.sessionID

@@ -16,7 +16,8 @@ import (
 	"reasonix/internal/model/visionimage"
 )
 
-const maxImageAttachmentBytes = 10 * 1024 * 1024
+// MaxImageAttachmentBytes caps a picture attachment; the desktop checks the same number before reading one.
+const MaxImageAttachmentBytes = 10 * 1024 * 1024
 const maxFileAttachmentBytes = 25 * 1024 * 1024
 const maxAttachmentCreateAttempts = 1000
 
@@ -82,8 +83,8 @@ func SaveImageBytes(declaredMime string, raw []byte) (string, error) {
 }
 
 func SaveImageBytesInRoot(root, declaredMime string, raw []byte) (string, error) {
-	if len(raw) == 0 || len(raw) > maxImageAttachmentBytes {
-		return "", attachmentSizeError(len(raw), maxImageAttachmentBytes)
+	if len(raw) == 0 || len(raw) > MaxImageAttachmentBytes {
+		return "", attachmentSizeError(len(raw), MaxImageAttachmentBytes)
 	}
 	mime := visionimage.DetectMime(raw)
 	if mime == "" {
@@ -163,7 +164,7 @@ func readAttachmentImage(base, path string) (raw []byte, mime string, err error)
 	if info.Mode()&os.ModeSymlink != 0 {
 		return nil, "", fmt.Errorf("attachment path must not be a symlink")
 	}
-	if info.IsDir() || info.Size() <= 0 || info.Size() > maxImageAttachmentBytes {
+	if info.IsDir() || info.Size() <= 0 || info.Size() > MaxImageAttachmentBytes {
 		return nil, "", fmt.Errorf("attachment image must be between 1 byte and 10 MB")
 	}
 	f, err := os.Open(clean)
@@ -178,11 +179,11 @@ func readAttachmentImage(base, path string) (raw []byte, mime string, err error)
 	if !os.SameFile(info, opened) {
 		return nil, "", fmt.Errorf("attachment changed while opening")
 	}
-	raw, err = io.ReadAll(io.LimitReader(f, maxImageAttachmentBytes+1))
+	raw, err = io.ReadAll(io.LimitReader(f, MaxImageAttachmentBytes+1))
 	if err != nil {
 		return nil, "", err
 	}
-	if len(raw) == 0 || len(raw) > maxImageAttachmentBytes {
+	if len(raw) == 0 || len(raw) > MaxImageAttachmentBytes {
 		return nil, "", fmt.Errorf("attachment image must be between 1 byte and 10 MB")
 	}
 	if after, err := f.Stat(); err != nil {

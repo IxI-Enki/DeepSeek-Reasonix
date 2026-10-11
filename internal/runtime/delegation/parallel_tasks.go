@@ -103,6 +103,52 @@ func (p *ParallelTasksTool) closeFanOut(ctx context.Context, sink event.Sink, me
 	publishGraph(sink, parallelOutcomeDelta(parentID, state, statuses, refs, taskErrs))
 }
 
+type parallelResult struct {
+	index  int
+	output string
+	ref    string
+	err    error
+}
+
+// runItem runs one child and reports it. A child cut off by cancellation
+// answers with the transcript it left, so what it had read is not lost with it.
+func (p *ParallelTasksTool) runItem(ctx context.Context, sink event.Sink, parentID, subID string, idx int, t parallelTaskItem, it parallelItem, onWait func(agentgraph.WaitCause) error, onSlot func() error) parallelResult {
+	itemCtx := withDeclaredGraphNode(agent.WithCallContext(ctx, subID, subSinkFor(subID, sink), nil, agent.PlanModeFromContext(ctx)), sink, subID)
+	// Route through TaskTool's unified runner so persisted parent sessions
+	// retain one independently readable transcript per child. Headless runs
+	// remain ephemeral and still receive fair bounded previews.
+	output, runErr := p.taskTool.RunProfileSpec(itemCtx, ProfileExecSpec{
+		Task:   TaskSpec{Objective: t.Prompt, Description: it.Label},
+		Worker: WorkerSpec{Kind: "task", Name: "task", SystemPrompt: DefaultReadOnlyTaskSystemPrompt, Model: it.Model, Effort: it.Effort},
+		Grant:  CapabilityGrant{ReadOnly: true, AllowNoTools: true, CallTools: t.Tools},
+		Sched:  SchedulerPolicy{MaxSteps: t.MaxSteps, Nested: agent.SubagentDepth(ctx) > 0, OnStart: onSlot, OnQueued: onWait},
+	})
+	finishedRef := ""
+	if ctx.Err() != nil && runErr == nil {
+		_, finishedRef = splitSubagentRunResult(output)
+		runErr = ctx.Err()
+	}
+	if runErr != nil {
+		ref, cause := stoppedRun(runErr)
+		ref = firstNonEmpty(ref, finishedRef)
+		errText := cause.Error()
+		if errors.Is(cause, context.Canceled) || errors.Is(cause, context.DeadlineExceeded) {
+			errText = "cancelled: " + errText
+		}
+		sink.Emit(event.Event{
+			Kind: event.ToolResult,
+			Tool: event.Tool{ID: subID, ParentID: parentID, Name: "task", Err: errText, Issuer: event.IssuedByHost},
+		})
+		return parallelResult{index: idx, ref: ref, err: cause}
+	}
+	sink.Emit(event.Event{
+		Kind: event.ToolResult,
+		Tool: event.Tool{ID: subID, ParentID: parentID, Name: "task", Output: output, Issuer: event.IssuedByHost},
+	})
+	answer, ref := splitSubagentRunResult(output)
+	return parallelResult{index: idx, output: answer, ref: ref}
+}
+
 func (p *ParallelTasksTool) Execute(ctx context.Context, args json.RawMessage) (result string, err error) {
 	// Group lifecycle: the group card's terminal is an explicit event from
 	// the tool itself (running once children start, exactly one terminal at
@@ -134,13 +180,6 @@ func (p *ParallelTasksTool) Execute(ctx context.Context, args json.RawMessage) (
 	// The group starts running once children begin dispatching.
 	merger.directStatus(parentID, subagentPhaseRunning)
 
-	type subResult struct {
-		index  int
-		output string
-		ref    string
-		err    error
-	}
-
 	n := len(tasks)
 
 	running := make([]bool, n)
@@ -153,7 +192,7 @@ func (p *ParallelTasksTool) Execute(ctx context.Context, args json.RawMessage) (
 		statuses[i] = agentgraph.StatePending
 	}
 
-	doneCh := make(chan subResult, n)
+	doneCh := make(chan parallelResult, n)
 	var wg sync.WaitGroup
 
 	makeLabel := func(t parallelTaskItem, idx int) string {
@@ -190,38 +229,7 @@ func (p *ParallelTasksTool) Execute(ctx context.Context, args json.RawMessage) (
 		publishGraph(sink, fanOutItemQueuedDelta(subID))
 
 		wg.Go(func() {
-			itemCtx := withDeclaredGraphNode(agent.WithCallContext(ctx, subID, subSinkFor(subID, sink), nil, agent.PlanModeFromContext(ctx)), sink, subID)
-			// Route through TaskTool's unified runner so persisted parent sessions
-			// retain one independently readable transcript per child. Headless runs
-			// remain ephemeral and still receive fair bounded previews.
-			output, runErr := p.taskTool.RunProfileSpec(itemCtx, ProfileExecSpec{
-				Task:   TaskSpec{Objective: t.Prompt, Description: label},
-				Worker: WorkerSpec{Kind: "task", Name: "task", SystemPrompt: DefaultReadOnlyTaskSystemPrompt, Model: items[idx].Model, Effort: items[idx].Effort},
-				Grant:  CapabilityGrant{ReadOnly: true, AllowNoTools: true, CallTools: t.Tools},
-				Sched:  SchedulerPolicy{MaxSteps: t.MaxSteps, Nested: agent.SubagentDepth(ctx) > 0, OnStart: onSlot, OnQueued: onWait},
-			})
-
-			if ctx.Err() != nil && runErr == nil {
-				runErr = ctx.Err()
-			}
-			if runErr != nil {
-				errText := runErr.Error()
-				if errors.Is(runErr, context.Canceled) || errors.Is(runErr, context.DeadlineExceeded) {
-					errText = "cancelled: " + errText
-				}
-				sink.Emit(event.Event{
-					Kind: event.ToolResult,
-					Tool: event.Tool{ID: subID, ParentID: parentID, Name: "task", Err: errText, Issuer: event.IssuedByHost},
-				})
-				doneCh <- subResult{index: idx, err: runErr}
-				return
-			}
-			sink.Emit(event.Event{
-				Kind: event.ToolResult,
-				Tool: event.Tool{ID: subID, ParentID: parentID, Name: "task", Output: output, Issuer: event.IssuedByHost},
-			})
-			answer, ref := splitSubagentRunResult(output)
-			doneCh <- subResult{index: idx, output: answer, ref: ref}
+			doneCh <- p.runItem(ctx, sink, parentID, subID, idx, t, items[idx], onWait, onSlot)
 		})
 	}
 
@@ -245,7 +253,7 @@ func (p *ParallelTasksTool) Execute(ctx context.Context, args json.RawMessage) (
 	for i := range tasks {
 		startTask(i)
 	}
-	processResult := func(r subResult) {
+	processResult := func(r parallelResult) {
 		if done[r.index] {
 			return
 		}
@@ -282,6 +290,10 @@ func (p *ParallelTasksTool) Execute(ctx context.Context, args json.RawMessage) (
 			}
 			markCancelled(err)
 			wg.Wait()
+			for len(doneCh) > 0 {
+				r := <-doneCh
+				refs[r.index] = r.ref
+			}
 			return formatParallelTasksAggregate(outputs, refs, taskErrs, statuses, true), err
 		}
 	}
@@ -322,13 +334,13 @@ func formatParallelTasksAggregate(outputs, refs []string, errs []error, statuses
 	items := make([]subagentAggregateItem, 0, n)
 	for i, st := range statuses {
 		item := subagentAggregateItem{header: fmt.Sprintf("── task-%d ──\n", i+1)}
+		if i < len(refs) {
+			item.ref = refs[i]
+		}
 		switch st {
 		case agentgraph.StateCompleted:
 			item.status = "status: completed\n"
 			item.answer = strings.TrimSpace(outputs[i])
-			if i < len(refs) {
-				item.ref = refs[i]
-			}
 		case agentgraph.StateCancelled:
 			item.status = "status: cancelled\n"
 			if errs[i] != nil {

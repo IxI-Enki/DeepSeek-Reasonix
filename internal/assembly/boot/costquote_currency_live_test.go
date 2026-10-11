@@ -22,7 +22,7 @@ func TestDisplayCurrencyNoticeRebindsTheQuoteTheSinkAttaches(t *testing.T) {
 			mu.Unlock()
 		}
 	})
-	sink := quotedSink(&config.Config{Providers: []config.ProviderEntry{{Name: "ds", Kind: "openai", BaseURL: "https://api.deepseek.com/v1", Model: "deepseek-flash", Models: []string{"deepseek-flash"}}}}, Options{Sink: spy})
+	sink, _ := quotedSink(&config.Config{Providers: []config.ProviderEntry{{Name: "ds", Kind: "openai", BaseURL: "https://api.deepseek.com/v1", Model: "deepseek-flash", Models: []string{"deepseek-flash"}}}}, Options{Sink: spy})
 	usage := event.Event{
 		Kind: event.Usage, ModelRef: "ds/deepseek-flash",
 		Usage:   &provider.Usage{PromptTokens: 1000, CompletionTokens: 1000, TotalTokens: 2000},

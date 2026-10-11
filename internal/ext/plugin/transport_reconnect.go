@@ -185,6 +185,62 @@ func (t *reconnectingTransport) renew(ctx context.Context, stale transport) (tra
 	}
 }
 
+// restart replaces the connection with a fresh child that has not been
+// handshaken, for a caller that opens the session itself. The old child is shut
+// down first, so a server that holds a port or a file lock never meets its own
+// predecessor, and the dial is bounded by ctx as well as the startup budget.
+func (t *reconnectingTransport) restart(ctx context.Context) error {
+	for {
+		t.mu.Lock()
+		if t.closed {
+			t.mu.Unlock()
+			return errors.New("mcp connection is closed")
+		}
+		wait := t.dialing
+		if wait == nil {
+			break
+		}
+		t.mu.Unlock()
+		select {
+		case <-wait:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+	stale := t.active
+	t.active = nil
+	done := make(chan struct{})
+	t.dialing = done
+	t.mu.Unlock()
+	if stale != nil {
+		stale.close()
+	}
+
+	budget := t.budget
+	if budget <= 0 {
+		budget = defaultStartTimeout
+	}
+	dialCtx, cancel := context.WithTimeout(ctx, budget)
+	defer cancel()
+	next, err := t.dial(t.lifeCtx, dialCtx)
+
+	t.mu.Lock()
+	t.dialing = nil
+	if err == nil && t.closed {
+		err = errors.New("mcp connection is closed")
+	}
+	if err == nil {
+		t.active = next
+		t.rebindProgressLocked(next)
+	}
+	t.mu.Unlock()
+	close(done)
+	if err != nil && next != nil {
+		next.close()
+	}
+	return err
+}
+
 // dialOne opens and hands over one replacement. It runs on the caller's
 // goroutine under the dialing token, so no spawn outlives the session, and the
 // startup budget bounds how long that caller waits.

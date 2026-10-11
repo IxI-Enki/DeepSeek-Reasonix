@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, configure, fireEvent, render, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import "./testkit";
 import { App } from "./App";
 import { MockHub } from "../port/mock_hub";
@@ -8,8 +8,6 @@ import { host } from "../port/host";
 import { MockPort } from "../port/mock";
 import { boot, STORAGE } from "../i18n";
 import type { AgentPort } from "../port/port";
-
-configure({ asyncUtilTimeout: 10_000 });
 
 beforeEach(() => {
   vi.spyOn(host(), "inShell").mockReturnValue(true);
@@ -29,6 +27,7 @@ function held() {
   port.providerSetup = async () => null;
   port.welcomeSeen = async () => true;
   hub.portFor = () => port;
+  hub.machinePort = () => port;
   return { hub, port };
 }
 
@@ -51,7 +50,7 @@ const painted = () => document.documentElement.style.getPropertyValue("zoom");
 const ctrl = (target: Element, key: string, init: Partial<KeyboardEventInit> = {}) =>
   fireEvent.keyDown(target, { key, code: key === "=" ? "Equal" : key === "-" ? "Minus" : `Digit${key}`, ctrlKey: true, ...init });
 
-describe("interface scale from the keyboard", { timeout: 30_000 }, () => {
+describe("interface scale from the keyboard", () => {
   it("enlarges, shrinks and resets through the same saved setting", async () => {
     const { hub, port } = held();
     const box = await mount(hub, port);

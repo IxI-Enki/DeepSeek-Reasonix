@@ -74,7 +74,7 @@ const packed = (name: string) =>
 it("keeps the painted pack after a failed read and clears it after a successful default selection", async () => {
   const hub = new MockHub();
   const runtimes = await hub.runtimes();
-  const port = hub.portFor(runtimes[0]);
+  const port = hub.machinePort();
   vi.spyOn(port, "themes").mockResolvedValueOnce([dusk]).mockRejectedValueOnce(unread).mockResolvedValue([]);
   const onError = vi.fn();
   const { result } = renderHook(() => usePaint(hub, runtimes, false, onError));
@@ -92,7 +92,7 @@ it("keeps the painted pack after a failed read and clears it after a successful 
 it("reports an initial window theme read failure without inventing an active pack", async () => {
   const hub = new MockHub();
   const runtimes = await hub.runtimes();
-  vi.spyOn(hub.portFor(runtimes[0]), "themes").mockRejectedValue(unread);
+  vi.spyOn(hub.machinePort(), "themes").mockRejectedValue(unread);
   const onError = vi.fn();
   const { result } = renderHook(() => usePaint(hub, runtimes, false, onError));
   await waitFor(() => expect(onError).toHaveBeenCalledExactlyOnceWith(unread));

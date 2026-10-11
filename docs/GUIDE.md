@@ -1198,9 +1198,9 @@ headers = { IJ_MCP_SERVER_PROJECT_PATH = "${REASONIX_WORKSPACE_ROOT}" }
 ```
 
 For a remote HTTP server without a static `Authorization` header, an
-authentication challenge is shown as **Sign in**. Run
-`reasonix mcp auth <name>` in the CLI, or click **Sign in** for that server in
-the Desktop MCP panel. Reasonix performs OAuth metadata discovery, dynamic
+authentication challenge (HTTP 401 with a `Bearer` challenge) is reported as
+needing sign-in. Run `reasonix mcp auth <name>` in the CLI; Studio has no
+sign-in control yet. Reasonix performs OAuth metadata discovery, dynamic
 client registration, PKCE S256 authorization, and refresh-token
 rotation. Discovery and token requests use the same Reasonix network-proxy
 settings as the MCP connection.

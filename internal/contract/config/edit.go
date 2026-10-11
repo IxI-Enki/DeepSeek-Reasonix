@@ -406,16 +406,15 @@ func (c *Config) SetCLITelemetryMode(mode string) error {
 }
 
 // SetDesktopConversationWidth sets the max transcript width preference.
-// standard = 960px fixed; full = 90% of the parent, with a 960px floor.
-// An empty value resets to standard.
+// standard reads; full widens the transcript; full-all the composer too.
 func (c *Config) SetDesktopConversationWidth(width string) error {
 	switch strings.ToLower(strings.TrimSpace(width)) {
 	case "", "standard":
 		c.Desktop.ConversationWidth = "standard"
-	case "full":
-		c.Desktop.ConversationWidth = "full"
+	case "full", "full-all":
+		c.Desktop.ConversationWidth = strings.ToLower(strings.TrimSpace(width))
 	default:
-		return fmt.Errorf("conversation width %q: must be standard|full", width)
+		return fmt.Errorf("conversation width %q: must be standard|full|full-all", width)
 	}
 	return nil
 }
@@ -471,72 +470,6 @@ func (c *Config) modelRefTargetsProvider(ref, name string) bool {
 		return e.Name == name
 	}
 	return false
-}
-
-// RemoveProvider deletes the named provider. References to the removed provider
-// are migrated to the first remaining configured provider when possible. The
-// default model is required, so removal is refused when no fallback exists;
-// optional planner/subagent refs are cleared instead of being left dangling.
-// ErrProviderNotFound is a removal of a provider the file does not hold.
-var ErrProviderNotFound = errors.New("no such provider")
-
-func (c *Config) RemoveProvider(name string) error {
-	name = strings.TrimSpace(name)
-	idx := -1
-	for i := range c.Providers {
-		if c.Providers[i].Name == name {
-			idx = i
-			break
-		}
-	}
-	if idx < 0 {
-		return fmt.Errorf("remove provider %q: %w", name, ErrProviderNotFound)
-	}
-
-	defaultRefsProvider := c.modelRefTargetsProvider(c.DefaultModel, name)
-	plannerRefsProvider := c.modelRefTargetsProvider(c.Agent.PlannerModel, name)
-	subagentRefsProvider := c.modelRefTargetsProvider(c.Agent.SubagentModel, name)
-	subagentModelRefsProvider := map[string]bool{}
-	for skill, ref := range c.Agent.SubagentModels {
-		if c.modelRefTargetsProvider(ref, name) {
-			subagentModelRefsProvider[skill] = true
-		}
-	}
-
-	fallback := ""
-	if defaultRefsProvider || plannerRefsProvider || subagentRefsProvider || len(subagentModelRefsProvider) > 0 {
-		fallback = c.providerRemovalFallback(name)
-	}
-	c.Providers = append(c.Providers[:idx], c.Providers[idx+1:]...)
-
-	if defaultRefsProvider {
-		c.DefaultModel = fallback
-	}
-	if plannerRefsProvider {
-		c.Agent.PlannerModel = fallback
-	}
-	if subagentRefsProvider {
-		c.Agent.SubagentModel = fallback
-	}
-	for skill := range subagentModelRefsProvider {
-		if fallback != "" {
-			c.Agent.SubagentModels[skill] = fallback
-		} else {
-			delete(c.Agent.SubagentModels, skill)
-		}
-	}
-	return nil
-}
-
-func (c *Config) providerRemovalFallback(name string) string {
-	for i := range c.Providers {
-		p := &c.Providers[i]
-		if p.Name == name || !p.Configured() || len(p.ModelList()) == 0 {
-			continue
-		}
-		return p.Name
-	}
-	return ""
 }
 
 // validateProvider checks the fields a provider can't function without.

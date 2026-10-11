@@ -1,6 +1,6 @@
 // What a session is made of, apart from the reducer that maintains it: the
 // rows the transcript draws and the state one turn hands the next.
-import type { Ask, Approval, Compaction, CostCoverage, ExtensionSurface, Guardian, Receipt, Tool, Via, WorkspaceLease } from "../port/wire";
+import type { Ask, Approval, Compaction, CostCoverage, ExtensionSurface, Guardian, Receipt, StoredAttachment, Tool, Via, WorkspaceLease } from "../port/wire";
 import type { Sample } from "../port/tokens";
 import type { Executions } from "./executions";
 
@@ -25,6 +25,7 @@ export type Item =
       msgIndex?: number;
       // The paired device it was sent from; absent is the window.
       via?: Via;
+      attachments?: StoredAttachment[];
     }
   // source names which model wrote it — a turn can carry two, and the card is
   // where the answer has to survive.
@@ -39,10 +40,11 @@ export type Item =
   // kernel recorded they said, since this screen never saw the selection.
   // recorded is the call's result when the card is rebuilt from history: the
   // record keeps what the model was told, not which options were pressed.
-  | { t: "ask"; id: string; ask: Ask; answered?: string[][]; answeredElsewhere?: boolean; by?: Via | "window"; said?: string; recorded?: string }
+  | { t: "ask"; id: string; ask: Ask; answered?: string[][]; answeredElsewhere?: boolean; timedOut?: boolean; by?: Via | "window"; said?: string; recorded?: string }
   | { t: "compaction"; id: string; c: Compaction; done: boolean }
   | { t: "remember"; id: string; m: RememberedFact; forgotten?: boolean }
   | { t: "receipt"; id: string; r: Receipt }
+  | { t: "worked"; id: string; ms: number }
   | { t: "extension"; id: string; ext: ExtensionSurface }
   // code identifies what the kernel is reporting. text is its own English,
   // kept as the fallback for a code this build has no wording for.

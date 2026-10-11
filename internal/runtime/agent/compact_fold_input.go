@@ -62,7 +62,7 @@ func (a *contextWindow) summaryInputBudget(instructions string) int {
 	}
 	reserve := summaryOutputReserve
 	if sharesContextWindow(a.svc.prov) && a.configuredOutputBudget(a.maxOutputTokens) > 0 {
-		reserve += outputBudgetReserve
+		reserve += outputBudgetReserveFor(window)
 	}
 	framing := a.estimatedPromptTokens([]provider.Message{
 		{Role: provider.RoleSystem, Content: summarySystemPrompt},

@@ -24,6 +24,12 @@ const coded = (message: string, code: string, params?: Record<string, string | n
 // upstream of this — dotted codes, sentinels, typed families — buys nothing if
 // the last hop prints the English that rode along for the log.
 describe("what a reader is told a refusal was", () => {
+  it("asks for a currency retry when its runtime owner changed", () => {
+    const refusal = coded("fixture fallback", "display_currency.runtime_changed");
+    expect(reason(refusal)).toBe("运行时已更换，费用显示币种未保存，请重试");
+    localStorage.setItem(STORAGE, "en"); boot();
+    expect(reason(refusal)).toBe("The runtime changed; the display currency was not saved. Try again.");
+  });
   it("renders shell refusal causes in Chinese and English", () => {
     for (const code of ["shell.destructive_target", "shell.analysis_unknown", "shell.delete_sequence", "shell.delete_nonliteral", "shell.delete_option", "shell.syntax_error", "shell.parser_unavailable", "shell.parser_timeout", "shell.command_line_too_long"]) {
       localStorage.setItem(STORAGE, "zh"); boot();

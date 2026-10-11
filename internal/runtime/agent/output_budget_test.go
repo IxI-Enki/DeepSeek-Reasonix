@@ -471,3 +471,22 @@ func TestForkCaptureProviderPreservesOutputBudgetCapabilities(t *testing.T) {
 		t.Fatalf("wrapped input policy = %+v, want %+v", got, prov.policy)
 	}
 }
+
+func TestOutputBudgetKeepsAWindowProportionalMarginOnALargeWindow(t *testing.T) {
+	prov := &sharedWindowTestProvider{budget: 65_536, shared: true}
+	window := 1_048_576
+	a := &Agent{agentConfig: agentConfig{contextWindow: window}, svc: agentServices{prov: prov}, sess: sessionRuntime{output: outputBudgetState{outputBudget: prov.budget}}}
+	msgs := []provider.Message{{Role: provider.RoleUser, Content: strings.Repeat("字", 975_000)}}
+	a.sess.output.lastUsage.Store(&provider.Usage{PromptTokens: 975_000})
+	a.window().setPromptTokenCalibration(975_000, requestCalibrationShapeOf(provider.Request{Messages: msgs}))
+
+	got, clipped, err := a.window().effectiveOutputBudget(provider.Request{Messages: msgs})
+	if err != nil || !clipped {
+		t.Fatalf("effectiveOutputBudget = %d clipped=%v err=%v, want a clipped budget", got, clipped, err)
+	}
+	// The real count was 1% above the estimate in the report this pins: input
+	// and output must still fit the window with that much error.
+	if actual := 975_000 + 975_000/100; actual+got > window {
+		t.Fatalf("a prompt 1%% above its estimate plus the %d-token budget is %d, past the %d window", got, actual+got, window)
+	}
+}

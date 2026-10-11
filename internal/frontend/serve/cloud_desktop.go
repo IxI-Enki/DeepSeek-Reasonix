@@ -89,7 +89,7 @@ func cloudDesktopMethod(method string) bool {
 }
 
 func cloudDesktopLiveEvents(path string) bool {
-	if path == "/events" {
+	if path == "/events" || path == "/tree/events" {
 		return true
 	}
 	parts := strings.Split(strings.Trim(path, "/"), "/")

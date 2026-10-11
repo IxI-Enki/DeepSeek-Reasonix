@@ -66,7 +66,7 @@ export const USER_INPUT = new Set([
   "paste", "cut", "copy", "drop", "dragstart", "dragover", "dragleave", "dragenter", "dragend", "wheel",
 ]);
 export const RUNTIME_EVENT = new Set([
-  "resize", "visibilitychange", "online", "offline", "load", "error", "beforeunload", "pagehide",
+  "resize", "visibilitychange", "online", "offline", "load", "error", "beforeunload", "pagehide", "pageshow",
   "unload", "message", "storage", "focus", "blur", "transitionend", "animationend", "popstate",
   "hashchange", "languagechange", "themechange", "fullscreenchange", "abort", "close", "open",
 ]);

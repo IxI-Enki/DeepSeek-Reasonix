@@ -78,8 +78,8 @@ func renderDesktopSection(b *strings.Builder, c *Config) {
 	}
 	renderDesktopReasoningDisplayMode(b, c)
 	fmt.Fprintf(b, "display_mode = %q   # desktop: standard|compact transcript display mode\n", c.DesktopDisplayMode())
-	if width := c.DesktopConversationWidth(); width == "full" {
-		fmt.Fprintf(b, "conversation_width = %q   # desktop: standard|full transcript width; empty = standard\n", width)
+	if width := c.DesktopConversationWidth(); width != "standard" {
+		fmt.Fprintf(b, "conversation_width = %q   # desktop: standard|full|full-all (full-all widens the composer too); empty = standard\n", width)
 	}
 	renderAppearanceSection(b, c.Desktop.Appearance)
 	b.WriteString("\n")

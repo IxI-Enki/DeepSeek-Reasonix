@@ -43,3 +43,19 @@ export interface UpdateProgress {
   code?: string;
   delta_skipped?: string;
 }
+
+// Where this install keeps its logs, and the crash files the kernel left there.
+// at is when the file was last written, as an RFC 3339 instant.
+export interface StudioLogs {
+  dir: string;
+  crashDir: string;
+  crashes: StudioCrash[];
+  // More crash files exist than are listed.
+  truncated: boolean;
+}
+
+export interface StudioCrash {
+  name: string;
+  at: string;
+  bytes: number;
+}

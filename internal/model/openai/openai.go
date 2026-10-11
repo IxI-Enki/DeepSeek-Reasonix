@@ -6,8 +6,8 @@
 //     reasoning_effort as a depth hint.
 //   - api.minimaxi.com → emits thinking.type=adaptive|disabled (M3's binary
 //     knob) instead of reasoning_effort, since M3 has no level scale.
-//   - open.bigmodel.cn / api.z.ai (Zhipu GLM) → emits thinking.type; the
-//     documented depth models also accept reasoning_effort
+//   - open.bigmodel.cn / api.z.ai or the glm protocol (Zhipu GLM) → emits
+//     thinking.type; the documented depth models also accept reasoning_effort
 //     (provider.ZhipuEffortContract). Older GLM keeps thinking.type only.
 //   - api.longcat.chat → emits thinking.type=enabled|disabled and omits
 //     reasoning_effort, matching LongCat's OpenAI-compatible API.
@@ -37,6 +37,7 @@ import (
 
 	"reasonix/internal/base/netclient"
 	"reasonix/internal/contract/provider"
+	"reasonix/internal/safety/endpointclient"
 )
 
 // defaultStreamIdleTimeout caps how long a started SSE stream may go without any
@@ -106,7 +107,7 @@ func New(cfg provider.Config) (provider.Provider, error) {
 	minimax := protocol == "" && IsMiniMax(cfg.BaseURL)
 	zhipu := protocol == "glm" || (protocol == "" && IsZhipu(cfg.BaseURL))
 	zhipuDepth := ""
-	if zhipu && IsZhipu(cfg.BaseURL) {
+	if zhipu {
 		zhipuDepth = provider.ZhipuDepthModel(cfg.Model)
 	}
 	longcat := protocol == "" && IsLongCat(cfg.BaseURL)
@@ -264,7 +265,7 @@ func New(cfg provider.Config) (provider.Provider, error) {
 
 func newHTTPClient(cfg provider.Config) (*http.Client, error) {
 	spec, _ := cfg.Extra["proxy_spec"].(netclient.ProxySpec)
-	return netclient.NewHTTPClient(spec, netclient.TransportOptions{
+	return endpointclient.New(spec, netclient.TransportOptions{
 		DialTimeout:           30 * time.Second,
 		KeepAlive:             30 * time.Second,
 		TLSHandshakeTimeout:   15 * time.Second,

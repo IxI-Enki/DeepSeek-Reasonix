@@ -63,7 +63,7 @@ func (c *Controller) prepareInboxRun(env sessioninbox.PromptEnvelope, origin ses
 		return func(ctx context.Context) error {
 			return c.runTurnLoop(c.withTurnTags(ctx, turnTags{format: strings.TrimSpace(env.Format), via: env.Via}), orchestratedTurn{
 				input: submit, raw: raw, display: display, images: c.frozenTurnImages(frozenImages),
-				synthetic: origin.IsHost(),
+				synthetic: origin.IsHost(), opensTurn: origin.IsHost(),
 			})
 		}, "", nil
 	}

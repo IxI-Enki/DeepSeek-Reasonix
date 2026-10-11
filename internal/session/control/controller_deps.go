@@ -19,6 +19,7 @@ import (
 	"reasonix/internal/runtime/guardian"
 	"reasonix/internal/runtime/promptrefine"
 	"reasonix/internal/runtime/recovery"
+	"reasonix/internal/runtime/taskmonitor"
 	"reasonix/internal/runtime/usecap"
 	"reasonix/internal/safety/permission"
 	"reasonix/internal/safety/sandbox"
@@ -73,6 +74,7 @@ type controllerDeps struct {
 	// the reloadable stores) — the skills slice of the Capabilities concern. See
 	// skill.go.
 	skills              skillSet
+	date                dateAnchor
 	skillRunner         skill.SubagentRunner
 	readOnlySkillRunner skill.SubagentRunner
 	skillProfile        skill.ProfileResolver
@@ -99,7 +101,8 @@ type controllerDeps struct {
 	// jobs is the session-scoped background-job manager. The agent's background
 	// tools spawn into it; Compose drains its completion notes into the next turn;
 	// Close cancels its still-running jobs.
-	jobs *jobs.Manager
+	jobs      *jobs.Manager
+	taskStore taskmonitor.WriteStore
 	// workspaceLease is the Delivery writer owner shared with the executor.
 	// It is exposed only through a sanitized state snapshot for Desktop recovery.
 	workspaceLease *workspacelease.Owner
@@ -125,6 +128,8 @@ type controllerDeps struct {
 	// workspaceRepo is workspaceRoot's git identity, resolved before any turn ran.
 	workspaceRepo gitcmd.Repo
 	posture       PostureEvidence
+	// refused owes the model the calls the host refused, once.
+	refused promptFailureDebt
 
 	// approval owns prompt bookkeeping and the runtime posture (ask/auto/yolo,
 	// session grants, the just-approved-plan window) behind its own locks, off
@@ -156,6 +161,7 @@ func newControllerDeps(opts Options, sink event.Sink, usageTee *goalUsageTee, ru
 		modelModes:             opts.ModelModes,
 		modelFace:              faceOfEntry(opts.ModelEntry),
 		sessionDir:             opts.SessionDir,
+		date:                   newDateAnchor(opts.Clock),
 		skills:                 newSkillSet(opts.Skills, opts.AllSkills, opts.SkillStore, opts.AllSkillStore, opts.DisableImplicitSkillInvocation, opts.WorkspaceRoot),
 		skillRunner:            opts.SkillRunner,
 		readOnlySkillRunner:    opts.ReadOnlySkillRunner,
@@ -171,6 +177,7 @@ func newControllerDeps(opts Options, sink event.Sink, usageTee *goalUsageTee, ru
 		balance:                opts.Balance,
 		feedback:               opts.Feedback,
 		jobs:                   opts.Jobs,
+		taskStore:              opts.TaskStore,
 		workspaceLease:         opts.WorkspaceLease,
 		mcp:                    newMcpManager(opts.Host, opts.Registry, pluginCtx, opts.MCPDefaultCallTimeout),
 		mcpConfigureSpec:       opts.MCPConfigureSpec,

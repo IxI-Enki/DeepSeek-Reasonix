@@ -154,7 +154,7 @@
     },
     {
       "name": "bash_output",
-      "description": "Read new output from a background job started with bash(run_in_background=true) or task(run_in_background=true). Returns the output produced since the last bash_output call for that job, plus its status (running/done/failed/killed). Does not block.",
+      "description": "Read new output from a background job started with bash(run_in_background=true) or task(run_in_background=true). Returns the output produced since the last bash_output call for that job, plus its status (running/done/failed/killed). Does not block. Omit job_id to list the jobs still running, with their kind, label and elapsed time.",
       "parameters": {
         "properties": {
           "filter": {
@@ -166,9 +166,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "job_id"
-        ],
+        "required": [],
         "type": "object"
       }
     },

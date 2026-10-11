@@ -104,3 +104,26 @@ export function ReceiptCard({ r }: { r: Receipt }) {
     </div>
   );
 }
+
+// What stands in for the card while it is hidden: one line, only when the
+// kernel graded the receipt. The grade is the kernel's; this chooses a glyph
+// and a colour for it. The words follow what the receipt holds: host-found gaps
+// are unproven work, while declarations alone are the turn's own caveats.
+export function ReceiptHint({ r, open, onToggle }: { r: Receipt; open: boolean; onToggle: () => void }) {
+  if (!r.severity) return null;
+  const warn = r.severity === "warn";
+  const text = r.gaps?.length ? t("有未验证的改动") : t("这一轮自己说明了风险或未验证项");
+  const label = `${warn ? t("警告") : t("提示")}：${text}`;
+  return (
+    <div className="rc" data-severity={r.severity}>
+      <button
+        type="button" className="rc-ok" data-action="chrome.receipt-line" aria-expanded={open} aria-label={label}
+        title={open ? t("收起交付验收") : t("点击查看交付验收：改了什么、哪些没有验证")}
+        onClick={onToggle}
+      >
+        <span className="rc-tick" style={{ "--rc-c": warn ? "var(--warn-ink)" : "var(--muted)" } as React.CSSProperties}>{warn ? "!" : "•"}</span>
+        <span className="rc-t">{text}</span>
+      </button>
+    </div>
+  );
+}

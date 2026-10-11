@@ -17,6 +17,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
@@ -67,6 +68,7 @@ type shellIdentity struct {
 	version string
 	exe     string
 	pid     int
+	logsDir string
 }
 
 func (s shellIdentity) stated() bool {
@@ -89,7 +91,7 @@ func studioInstall(shell shellIdentity) *update.Install {
 // nil where the shell did not state enough to own one. Nil is the gate: the
 // routes are not registered, so a host that cannot name the application it
 // would replace has no way to be asked to replace it.
-func studioUpdateHost(shell shellIdentity, to io.Writer) appupdate.Capability {
+func studioUpdateHost(shell shellIdentity, owner *shellOwner) appupdate.Capability {
 	if !shell.stated() {
 		return nil
 	}
@@ -97,7 +99,7 @@ func studioUpdateHost(shell shellIdentity, to io.Writer) appupdate.Capability {
 	// still work; the swap is what refuses, by name.
 	application, _ := update.ApplicationAt(shell.exe, shell.pid)
 	return appupdate.New(appupdate.Options{
-		Owner:       &shellOwner{to: to},
+		Owner:       owner,
 		Running:     shell.version,
 		Line:        update.StudioLine(),
 		Application: application,
@@ -142,11 +144,20 @@ func main() {
 		return
 	}
 	boot.SetComputerHelper(*computerHelper)
-	shell := shellIdentity{version: *studioVersion, exe: *studioApp, pid: *studioAppPID}
+	shell := shellIdentity{version: *studioVersion, exe: *studioApp, pid: *studioAppPID, logsDir: logsDirOf(*crashDir)}
 	releaseFatalLog := crashreport.InstallFatalLog(*crashDir, defaultVersion(shell.version))
 	code := run(parentLease(os.Stdin), os.Stdout, os.Stderr, *page, shell)
 	releaseFatalLog()
 	os.Exit(code)
+}
+
+// logsDirOf is the shell's logs directory: the crash directory it passed is
+// the "crash" folder inside it.
+func logsDirOf(crashDir string) string {
+	if strings.TrimSpace(crashDir) == "" {
+		return ""
+	}
+	return filepath.Dir(crashDir)
 }
 
 func defaultVersion(stated string) string {
@@ -370,6 +381,10 @@ func assemble(ctx context.Context, logs, handshakeTo io.Writer, shell shellIdent
 		<-ctx.Done()
 		share.Close()
 	}()
+	owner := &shellOwner{to: handshakeTo}
+	// A toast the user clicks is answered here, in the process that sent it, and
+	// the shell is the one that can bring its window forward.
+	notify.OnActivate(showOnToastClick(owner))
 	hub := serve.NewHub(serve.HubOptions{
 		Serve:         hubCfg,
 		Surface:       surface.Desktop,
@@ -378,13 +393,15 @@ func assemble(ctx context.Context, logs, handshakeTo io.Writer, shell shellIdent
 		DecorateSink:  decorate,
 		Tray:          &studioTray{tracker: tracker},
 		Notifications: notifySet,
+		NotifySender:  notify.NewPlatformSender(),
 		BrowserHost:   browserHost,
 		Asks:          asks,
 		Remote:        remotehost.New(ctx, version, asks),
 		OnClose:       func(rt *serve.Runtime) { tracker.Drop(paneKey(rt.Events)) },
 		Install:       studioInstall(shell),
-		Update:        studioUpdateHost(shell, handshakeTo),
+		Update:        studioUpdateHost(shell, owner),
 		Share:         share,
+		LogsDir:       shell.logsDir,
 	})
 	share.Attach(hub.Handler())
 	srv := serve.New(built.Controller, bc, hubCfg)

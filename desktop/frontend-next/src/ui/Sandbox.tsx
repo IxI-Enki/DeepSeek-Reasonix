@@ -3,6 +3,7 @@ import { t } from "../i18n";
 import { reason, say } from "../i18n/kernel";
 import type { AgentPort, SandboxSettings } from "../port/port";
 import { Switch } from "./Switch";
+import { WorkspaceFolders } from "./WorkspaceFolders";
 
 const MODES: [string, string][] = [
   ["enforce", "关进沙箱"],
@@ -154,6 +155,8 @@ export function Sandbox({ port, onChanged }: { port: AgentPort; onChanged: () =>
           />
         </div>
       </div>
+
+      <WorkspaceFolders port={port} onChanged={onChanged} />
 
       <CommandMode
         box={box}

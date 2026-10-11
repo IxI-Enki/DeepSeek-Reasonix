@@ -1,4 +1,5 @@
 import { SseHttp } from "./sse_http";
+import { base64Of, guardUpload, tooLarge, UPLOAD_LIMIT_MB } from "./upload";
 import type { Appearance } from "./port";
 
 // The appearance half of the port. Chained the way the fixture's faces are, so
@@ -28,14 +29,12 @@ export class SseLook extends SseHttp {
   // JSON, not raw bytes: csrfGuard admits nothing else, which is what stops a
   // cross-site form from posting here at all.
   async uploadWallpaper(blob: Blob) {
-    const buf = new Uint8Array(await blob.arrayBuffer());
-    let bin = "";
-    for (let i = 0; i < buf.length; i += 0x8000) bin += String.fromCharCode(...buf.subarray(i, i + 0x8000));
+    guardUpload(blob.size, UPLOAD_LIMIT_MB.wallpaper, tooLarge("wallpaper.too_large", "limit"));
     const res = await fetch(this.base + "/appearance/wallpaper", {
       method: "POST",
       headers: { "content-type": "application/json" },
       credentials: "same-origin",
-      body: JSON.stringify({ mime: blob.type, data: btoa(bin) }),
+      body: JSON.stringify({ mime: blob.type, data: await base64Of(blob) }),
     });
     const body = (await res.json().catch(() => ({}))) as Appearance & { error?: string };
     if (!res.ok) throw new Error(body.error || `/appearance/wallpaper: ${res.status}`);

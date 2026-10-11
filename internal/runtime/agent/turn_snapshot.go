@@ -89,10 +89,10 @@ func previousSnapshot(seal *EvidenceSeal) (observation.Snapshot, bool) {
 		return observation.Snapshot{}, false
 	}
 	rec, err := seal.Store.Record(head.Record)
-	for step := 0; err == nil && rec.Kind != shadowBundleKind && rec.Parent != "" && step < maxRecordsBack; step++ {
+	for step := 0; err == nil && !isShadowBundle(rec.Kind) && rec.Parent != "" && step < maxRecordsBack; step++ {
 		rec, err = seal.Store.Record(rec.Parent)
 	}
-	if err != nil || rec.Kind != shadowBundleKind {
+	if err != nil || !isShadowBundle(rec.Kind) {
 		return observation.Snapshot{}, false
 	}
 	payload, err := seal.Store.Object(rec.Payload)

@@ -1,12 +1,17 @@
 package control
 
-import "reasonix/internal/contract/config"
+import (
+	"reasonix/internal/contract/config"
+	"reasonix/internal/contract/event"
+)
 
 // displayPrefs is what a session shows, as opposed to what it does. Grouping
 // them costs one field where loose ones cost one each, and the grouping is not
 // cosmetic: independent flags multiply into states no type records as legal,
 // which is what the struct-state ceiling exists to stop.
 type displayPrefs struct {
+	currencyGroup *DisplayCurrencyGroup
+	quoteContext  *event.QuoteContext
 	// Preferences a frontend sets mid-session; empty means follow the language
 	// policy of the current user turn.
 	responseLanguage  string
@@ -19,6 +24,7 @@ type displayPrefs struct {
 
 func displayPrefsFrom(opts Options) displayPrefs {
 	return displayPrefs{
+		quoteContext:          opts.QuoteContext,
 		responseLanguage:      config.NormalizeLanguage(opts.ResponseLanguage),
 		reasoningLanguage:     config.NormalizeReasoningLanguage(opts.ReasoningLanguage),
 		embeddedDiffDetection: opts.EmbeddedDiffDetection,

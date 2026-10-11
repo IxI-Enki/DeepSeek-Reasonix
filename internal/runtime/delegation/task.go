@@ -82,8 +82,8 @@ type TaskTool struct {
 	resolveProvider               func(modelRef, effort string) (provider.Provider, *provider.Pricing, int, error)
 	transcripts                   *SubagentStore
 	workspaceRoot                 string
-	baseModel                     string
-	baseEffort                    string
+	extraRoots                    []string
+	baseModel, baseEffort         string
 	identityProfile               func(modelRef, effort string) (string, string)
 	maxSubagentDepth              int
 	deliveryProfile               bool
@@ -705,7 +705,7 @@ func (t *TaskTool) RunProfileSpec(ctx context.Context, spec ProfileExecSpec) (re
 	}
 	answer, err := runSession(ctx, trk.wrap(), false)
 	if err != nil {
-		return "", errors.Join(err, t.saveRunTerminal(run, err))
+		return "", t.endedRunError(run, err)
 	}
 	if t.transcripts != nil && run.Ref != "" {
 		if err := t.transcripts.SaveCompleted(run); err != nil {
@@ -714,6 +714,16 @@ func (t *TaskTool) RunProfileSpec(ctx context.Context, spec ProfileExecSpec) (re
 		return FormatSubagentRunResult(answer, run, false), nil
 	}
 	return GuardSubagentHostDecisionText(answer), nil
+}
+
+// endedRunError records how a run that executed ended and returns its error. A
+// cancellation carries the transcript's reference only once its terminal state
+// is saved: an unsaved run cannot be read back, so naming it would mislead.
+func (t *TaskTool) endedRunError(run *SubagentRun, err error) error {
+	if saveErr := t.saveRunTerminal(run, err); saveErr != nil {
+		return errors.Join(err, saveErr)
+	}
+	return withStoppedRunRef(err, run)
 }
 
 // saveRunTerminal records what happened to a child that actually ran. It is the
@@ -917,7 +927,7 @@ func (t *TaskTool) subagentOptions(ctx context.Context, maxSteps int, pricing *p
 	if t.hooksForRole != nil {
 		opts.Hooks = t.hooksForRole(recoveryTaskID)
 	}
-	return opts
+	return t.withExtraRoots(opts)
 }
 
 func subagentRecoveryTaskID(ctx context.Context, ref string) string {

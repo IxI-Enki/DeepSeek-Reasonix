@@ -191,7 +191,7 @@ func changesOf(ledger *evidence.Ledger, receipts []evidence.Receipt, inWorkspace
 			authored[p] = true
 		}
 		for _, p := range r.Paths {
-			if p == "" || (inWorkspace != nil && !inWorkspace(p)) {
+			if p == "" || slices.Contains(r.HostOwned, p) || (inWorkspace != nil && !inWorkspace(p)) {
 				continue
 			}
 			if _, seen := at[p]; !seen {
@@ -223,7 +223,7 @@ func changesOf(ledger *evidence.Ledger, receipts []evidence.Receipt, inWorkspace
 func mutationsOf(receipts []evidence.Receipt, inWorkspace func(string) bool) int {
 	count := 0
 	for _, r := range receipts {
-		if r.Success && (r.Mutation || r.Write) && keptAnyPath(r.Paths, inWorkspace) {
+		if r.Success && (r.Mutation || r.Write) && keptAnyPath(r, inWorkspace) {
 			count++
 		}
 	}
@@ -233,11 +233,13 @@ func mutationsOf(receipts []evidence.Receipt, inWorkspace func(string) bool) int
 // keptAnyPath reports whether a receipt touched the work product. A receipt
 // that named no path counts either way: `sed -i` and `rm` name nothing and
 // must not escape the gap by staying silent about where they landed.
-func keptAnyPath(paths []string, inWorkspace func(string) bool) bool {
-	if inWorkspace == nil || len(paths) == 0 {
+func keptAnyPath(r evidence.Receipt, inWorkspace func(string) bool) bool {
+	if len(r.Paths) == 0 {
 		return true
 	}
-	return slices.ContainsFunc(paths, inWorkspace)
+	return slices.ContainsFunc(r.Paths, func(p string) bool {
+		return !slices.Contains(r.HostOwned, p) && (inWorkspace == nil || inWorkspace(p))
+	})
 }
 
 // browserCheckTool is the browser call the host can classify as a check.

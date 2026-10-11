@@ -1,17 +1,19 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import "./testkit";
 import { App } from "./App";
 import { dropDraft } from "./feedbackdraft";
 import { MockHub } from "../port/mock_hub";
+import { HttpError } from "../port/port";
 import { MockFeedback } from "../port/mock_feedback";
 import type { FeedbackMine } from "../port/feedback";
 
 afterEach(() => {
   cleanup();
   dropDraft();
+  vi.restoreAllMocks();
 });
 
 function hub() {
@@ -54,20 +56,13 @@ describe("reaching feedback", () => {
 
 function quiet(unread: (m: FeedbackMine) => FeedbackMine = (m) => m) {
   const h = hub();
-  const build = h.portFor.bind(h);
+  const port = h.machinePort();
   const asked = vi.fn();
-  const wrapped = new WeakSet<object>();
-  h.portFor = (rt) => {
-    const port = build(rt);
-    if (wrapped.has(port)) return port;
-    wrapped.add(port);
-    const mine = port.myFeedback.bind(port);
-    port.myFeedback = vi.fn(async () => {
-      asked();
-      return unread(await mine());
-    });
-    return port;
-  };
+  const mine = port.myFeedback.bind(port);
+  port.myFeedback = vi.fn(async () => {
+    asked();
+    return unread(await mine());
+  });
   return { hub: h, asked };
 }
 
@@ -109,13 +104,13 @@ describe("the unread badge", () => {
     expect(hit.textContent).toContain("3 项待查看");
   });
 
-  it("is read when the app opens and never on a timer", async () => {
+  it("is read when the app opens, then re-armed only every ten minutes because a report is open", async () => {
     const { hub: h, asked } = quiet();
     const long: number[] = [];
     const wrap = (name: "setInterval" | "setTimeout") => {
       const real = window[name].bind(window) as (fn: TimerHandler, ms?: number, ...a: unknown[]) => number;
       return vi.spyOn(window, name).mockImplementation(((fn: TimerHandler, ms?: number, ...a: unknown[]) => {
-        if ((ms ?? 0) >= 10_000) long.push(ms!);
+        if ((ms ?? 0) >= 10_000 && !new Error().stack?.includes("@testing-library")) long.push(ms!);
         return real(fn, ms, ...a);
       }) as typeof window.setTimeout);
     };
@@ -124,7 +119,7 @@ describe("the unread badge", () => {
     await screen.findByRole("button", { name: /3 项待查看/ });
     expect(asked).toHaveBeenCalledTimes(1);
     spies.forEach((s) => s.mockRestore());
-    expect(long).toEqual([]);
+    expect(long).toEqual([600_000]);
   });
 
   it("is not read again when another session is opened", async () => {
@@ -153,4 +148,33 @@ describe("the mock keeps what the badge reads", () => {
     await port.feedbackSeen("FB-5N1C-8RT3", 22);
     expect((await port.myFeedback()).unread).toBe(0);
   });
+});
+
+
+it("starts and rebinds feedback polling when the first local owner becomes available", async () => {
+  const h = hub();
+  await h.close("r1");
+  const remote = await h.openRemote({ host: "gpu", workspace: "/remote", sessionPath: "/remote/session.jsonl" });
+  const remoteReads = vi.spyOn(h.portFor(remote), "myFeedback");
+  const machine = h.machinePort();
+  const original = machine.myFeedback.bind(machine);
+  const read = vi.spyOn(machine, "myFeedback").mockImplementation(async () => {
+    if (!(await h.runtimes()).some((rt) => !rt.host)) throw new HttpError(503, "local required", { code: "settings.local_runtime_required" });
+    return original();
+  });
+  vi.spyOn(document, "hasFocus").mockReturnValue(true);
+  render(<App hub={h} />);
+  await screen.findByRole("button", { name: "发送反馈" });
+  await userEvent.click(await screen.findByText("上一次的会话"));
+  await screen.findByRole("button", { name: /发送反馈.*3 项待查看/ });
+  const first = (await h.runtimes()).find((rt) => !rt.host)!;
+  const firstReads = read.mock.calls.length;
+  await userEvent.click(await screen.findByRole("treeitem", { name: /my-website/ }));
+  await userEvent.click(await screen.findByRole("treeitem", { name: /站点改版/ }));
+  await waitFor(async () => expect((await h.runtimes()).filter((rt) => !rt.host)).toHaveLength(2));
+  expect(read).toHaveBeenCalledTimes(firstReads);
+  const tab = document.querySelector(`[data-pane="${first.id}"][role="tab"]`)! as HTMLElement;
+  await userEvent.click(within(tab).getByRole("button", { name: "关闭这个面板" }));
+  await waitFor(() => expect(read).toHaveBeenCalledTimes(firstReads + 1));
+  expect(remoteReads).not.toHaveBeenCalled();
 });

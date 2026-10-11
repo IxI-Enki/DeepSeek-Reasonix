@@ -172,6 +172,10 @@ raised with its ratios kept.
 - `--t-live` (.6s) is not a weight. A meter or a fill reports work that is
   running, and reports it by growing, so this tier drives a fill's own geometry
   and never answers a click — at .6s it would answer late.
+- `--tip-delay` (.3s) is how long a pointer rests before a hint is drawn: VS Code
+  waits 250ms by default, and an instant hint flashes on every pass across a
+  column of icons. Keyboard focus is not hovering and is never delayed. It is a
+  wait, not motion, so reduced motion keeps it: dropping it would bring the flash back.
 - `--t-press` (.06s) is contact itself; anything slower reads as the interface
   thinking it over. What a press looks like is a token, so reduced motion
   answers for every control by changing one value.

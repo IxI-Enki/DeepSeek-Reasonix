@@ -48,6 +48,7 @@ func TestCloudDesktopRejectsLiveStreamsAndOversizedWrites(t *testing.T) {
 	hub := NewHub(HubOptions{})
 	for _, request := range []remotecloud.DesktopRequest{
 		{Method: http.MethodGet, Path: "/events"},
+		{Method: http.MethodGet, Path: "/tree/events"},
 		{Method: http.MethodGet, Path: "/rt/runtime/events"},
 		{Method: http.MethodPost, Path: "/submit", Body: make([]byte, cloudDesktopRequestLimit+1)},
 		{Method: http.MethodConnect, Path: "/runtimes"},

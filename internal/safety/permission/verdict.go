@@ -30,6 +30,17 @@ func IsRefusalCode(code string) bool {
 	return false
 }
 
+// RefusalStands reports a refusal that holds until the user changes the mode,
+// a rule or their answer, so repeating the call cannot succeed. Parked (a record
+// awaits a person) and UntrustedFolder (retry after trusting) are not final.
+func RefusalStands(code string) bool {
+	switch code {
+	case RefusalDenyRule, RefusalReadOnly, RefusalDeclined, RefusalUnattended:
+		return true
+	}
+	return false
+}
+
 // Verdict is a gate's answer to one call: whether it runs, and when it does
 // not, the reason the model reads and the code a caller reports.
 type Verdict struct {
@@ -133,7 +144,7 @@ func (g *Gate) ask(ctx context.Context, toolName string, args json.RawMessage, r
 	return Verdict{Allow: true}, nil
 }
 
-const postureRefusal = "this session's permission mode refuses anything that would need approval, and this call would. Nobody declined it and no deny rule matched; do the part that needs no approval, or report what was refused."
+const postureRefusal = "this session's permission mode refuses anything that would need approval, and this call would. Nobody declined it and no deny rule matched. Do not retry this call or a rewording of it unless the user changes the mode or approves it; do the part that needs no approval, or report what was refused."
 
 // denial names what refused a call: a matched deny rule, the read-only
 // posture, or a mode that refuses whatever it would otherwise ask about.

@@ -14,6 +14,16 @@ export interface CompletionItem {
   // builtin | command | skill | subagent | prompt | file | dir | resource.
   // Empty on argument values, which are not things.
   kind?: string;
+  // The arguments an MCP prompt declares, in order.
+  args?: CompletionArg[];
+  // Declarations the kernel left out of args to keep the row short.
+  moreArgs?: number;
+}
+
+export interface CompletionArg {
+  name: string;
+  description?: string;
+  required?: boolean;
 }
 
 export interface Completion {

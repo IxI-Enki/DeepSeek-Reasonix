@@ -589,3 +589,11 @@ describe("feedback dialog size", () => {
     expect(dialog.hasAttribute("data-wide")).toBe(false);
   });
 });
+
+describe("the environment block", () => {
+  it("says Windows 11 for a Windows 11 build and still sends the numeric version unchanged", async () => {
+    const { port } = setup({ env: { version: "v2.33.0", commit: "5e17135", surface: "studio", os: "windows", osVersion: "10.0.26200", arch: "amd64", locale: "zh-CN", channel: "stable", providerKind: "openai" } } as Partial<FeedbackEnv>);
+    expect(await screen.findByText("Windows 11 (10.0.26200) amd64")).toBeTruthy();
+    expect(port.feedbackEnv).toHaveBeenCalled();
+  });
+});

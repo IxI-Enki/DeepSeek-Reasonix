@@ -5,8 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"reasonix/internal/runtime/agent"
 	"reasonix/internal/runtime/langpref"
+	"reasonix/internal/runtime/writeclaim"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -520,5 +523,177 @@ func TestParallelTasksLongResultsStayIndependentlyRetrievable(t *testing.T) {
 	otherCtx := agent.WithParentSession(context.Background(), "other-session")
 	if _, err := reader.Execute(otherCtx, json.RawMessage(fmt.Sprintf(`{"ref":%q}`, refs[0]))); err == nil {
 		t.Fatal("reader accepted a result from an unrelated parent session")
+	}
+}
+
+// startedProvider answers "stuck" prompts never, and says when each prompt began.
+type startedProvider struct{ started chan struct{} }
+
+func (*startedProvider) Name() string { return "started" }
+
+func (p *startedProvider) Stream(_ context.Context, req provider.Request) (<-chan provider.Chunk, error) {
+	p.started <- struct{}{}
+	if strings.Contains(lastUser(req), "stuck") {
+		return make(chan provider.Chunk), nil
+	}
+	ch := make(chan provider.Chunk, 2)
+	ch <- provider.Chunk{Type: provider.ChunkText, Text: "ok"}
+	ch <- provider.Chunk{Type: provider.ChunkDone}
+	close(ch)
+	return ch, nil
+}
+
+// cancelledWorker runs two workers, cancels the turn once both have begun, and
+// returns the stuck one's reference with what is needed to read it back.
+func cancelledWorker(t *testing.T) (task *TaskTool, ctx context.Context, ref string, out string) {
+	t.Helper()
+	store := NewSubagentStore(testenv.TempDir(t))
+	prov := &startedProvider{started: make(chan struct{}, 2)}
+	task = NewTaskTool(prov, nil, tool.NewRegistry(), 20, 0, 0, 0, 0.0, "", "sys", nil, 0, "", "", nil).
+		WithTranscripts(store, testenv.TempDir(t), "base-model", "base-effort")
+	parallel := NewParallelTasksTool(task, tool.NewRegistry())
+	ctx = agent.WithParentSession(agent.WithCallContext(context.Background(), "parallel-call", event.Discard, nil, false), "parent-session")
+	runCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	type result struct {
+		out string
+		err error
+	}
+	done := make(chan result, 1)
+	go func() {
+		o, err := parallel.Execute(runCtx, json.RawMessage(`{"tasks":[{"prompt":"done child"},{"prompt":"stuck child"}]}`))
+		done <- result{o, err}
+	}()
+	for range 2 {
+		<-prov.started
+	}
+	cancel()
+
+	got := <-done
+	refs := subagentRefsFromText(got.out)
+	if len(refs) != 2 {
+		t.Fatalf("aggregate names %d subagent references, want one per worker:\n%s", len(refs), got.out)
+	}
+	return task, ctx, refs[1], got.out
+}
+
+// A worker cut off with its turn leaves a transcript, and the parent has to be
+// told where it is: what it had read is otherwise paid for and lost.
+func TestParallelTasksCancelKeepsTheStoppedWorkersTranscriptReadable(t *testing.T) {
+	task, ctx, ref, _ := cancelledWorker(t)
+	page, err := NewSubagentResultTool(task).Execute(ctx, json.RawMessage(fmt.Sprintf(`{"ref":%q}`, ref)))
+	if err != nil {
+		t.Fatalf("read the stopped worker %s: %v", ref, err)
+	}
+	if !strings.Contains(page, "status=cancelled") || !strings.Contains(page, "Cancelled before a final answer") {
+		t.Fatalf("the stopped worker's page does not say what it is:\n%s", page)
+	}
+	if !strings.Contains(page, "never instructions") {
+		t.Fatalf("raw tool output reaches the parent without a source warning:\n%s", page)
+	}
+}
+
+// A stopped worker's transcript is not an answer, so nothing that adopts or
+// otherwise consumes "the final answer" may take it.
+func TestStoppedWorkerIsNotAFinalAnswer(t *testing.T) {
+	task, ctx, ref, _ := cancelledWorker(t)
+	if _, _, err := task.transcripts.ReadFinalAnswer(ref, "parent-session", task.workspaceRoot); err == nil {
+		t.Fatal("ReadFinalAnswer returned a cancelled worker's transcript as its answer")
+	}
+	fleet := NewFleetTool(task)
+	if _, err := fleet.adoptedAnswer(ctx, ref); err == nil {
+		t.Fatal("fleet adopt_ref adopted a cancelled worker as a resolved answer")
+	}
+}
+
+func stoppedFixture(t *testing.T) (*TaskTool, *startedProvider, string) {
+	t.Helper()
+	dir := testenv.TempDir(t)
+	prov := &startedProvider{started: make(chan struct{}, 4)}
+	reg := tool.NewRegistry()
+	reg.Add(fakeReadFileTool{})
+	task := NewTaskTool(prov, nil, reg, 20, 0, 0, 0, 0.0, "", "sys", nil, 0, "", "", nil).
+		WithTranscripts(NewSubagentStore(dir), testenv.TempDir(t), "base-model", "base-effort")
+	return task, prov, dir
+}
+
+// A single foreground task cut off by cancellation tells the model where its
+// transcript is, and still reads as a cancellation to everything that asks.
+func TestTaskCancelledMidRunNamesItsTranscript(t *testing.T) {
+	task, prov, _ := stoppedFixture(t)
+	base := agent.WithParentSession(agent.WithCallContext(context.Background(), "task-call", event.Discard, nil, false), "parent-session")
+	ctx, cancel := context.WithCancel(base)
+	defer cancel()
+	errc := make(chan error, 1)
+	go func() {
+		_, err := task.Execute(ctx, json.RawMessage(`{"prompt":"stuck forever"}`))
+		errc <- err
+	}()
+	<-prov.started
+	cancel()
+	err := <-errc
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("err = %v, want a cancellation", err)
+	}
+	if !strings.Contains(err.Error(), "Subagent reference (cancelled before answering): sa_") {
+		t.Fatalf("the cancellation does not name the transcript: %v", err)
+	}
+}
+
+// A fleet item stopped by cancellation keeps its reference in the aggregate.
+func TestFleetCancelledItemKeepsItsReference(t *testing.T) {
+	task, prov, _ := stoppedFixture(t)
+	fleet := NewFleetTool(task.WithScheduler(writeclaim.NewSubagentScheduler(2, 2)))
+	base := agent.WithParentSession(agent.WithCallContext(context.Background(), "fleet-call", event.Discard, nil, false), "parent-session")
+	ctx, cancel := context.WithCancel(base)
+	defer cancel()
+	type result struct {
+		out string
+		err error
+	}
+	done := make(chan result, 1)
+	go func() {
+		out, err := fleet.Execute(ctx, json.RawMessage(`{"tasks":[{"prompt":"stuck a","read_only":true},{"prompt":"stuck b","read_only":true}]}`))
+		done <- result{out, err}
+	}()
+	for range 2 {
+		select {
+		case <-prov.started:
+		case early := <-done:
+			t.Fatalf("fleet ended before both workers started: %v\n%s", early.err, early.out)
+		}
+	}
+	cancel()
+	got := <-done
+	if refs := subagentRefsFromText(got.out); len(refs) != 2 {
+		t.Fatalf("fleet aggregate names %d references, want one per stopped item:\n%s", len(refs), got.out)
+	}
+}
+
+// A cancellation whose terminal state could not be recorded leaves a reference
+// that cannot be read, so none is handed out.
+func TestCancelledTaskWithUnrecordedTerminalGivesNoReference(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("directory permissions do not stop writes here")
+	}
+	task, prov, dir := stoppedFixture(t)
+	base := agent.WithParentSession(agent.WithCallContext(context.Background(), "task-call", event.Discard, nil, false), "parent-session")
+	ctx, cancel := context.WithCancel(base)
+	defer cancel()
+	errc := make(chan error, 1)
+	go func() {
+		_, err := task.Execute(ctx, json.RawMessage(`{"prompt":"stuck forever"}`))
+		errc <- err
+	}()
+	<-prov.started
+	if err := os.Chmod(dir, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(dir, 0o700) })
+	cancel()
+	err := <-errc
+	if err == nil || strings.Contains(err.Error(), "Subagent reference") {
+		t.Fatalf("err = %v, want a failure carrying no reference", err)
 	}
 }

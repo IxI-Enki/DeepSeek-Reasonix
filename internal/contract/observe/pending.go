@@ -4,8 +4,8 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"reasonix/internal/base/textutil"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 )
@@ -118,22 +118,8 @@ func (l *Ledger) List() []Pending {
 	return append([]Pending(nil), l.list...)
 }
 
-// Sanitize removes what could misrepresent text on a card: control characters
-// other than newline and tab, characters that reorder text, zero-width and
-// Unicode tag characters that hide it, and the line and paragraph separators.
-// Every sink stores what it returns.
-func Sanitize(s string) string {
-	return strings.Map(func(r rune) rune {
-		switch {
-		case r == '\n' || r == '\t':
-			return r
-		case r < 0x20 || r == 0x7f || (r >= 0x80 && r < 0xa0):
-			return -1
-		case r == 0x061c || r == 0x200e || r == 0x200f || (r >= 0x202a && r <= 0x202e) || (r >= 0x2066 && r <= 0x2069):
-			return -1
-		case r >= 0x200b && r <= 0x200d, r == 0x2060, r == 0xfeff, r == 0x2028, r == 0x2029, r >= 0xe0000 && r <= 0xe007f:
-			return -1
-		}
-		return r
-	}, s)
-}
+// Sanitize is textutil's stored policy: control characters other than newline
+// and tab, characters that reorder text, zero-width and Unicode tag characters
+// that hide it, and the line and paragraph separators are removed. Every sink
+// stores what it returns.
+func Sanitize(s string) string { return textutil.SanitizeStored(s) }

@@ -22,7 +22,7 @@ import type { NetworkProbe, NetworkSettings } from "./network";
 import type { ApprovalDefault, ApprovalMode, WorkspaceTrust, ApprovalVerdict, BrowserTab, Checkpoint, HistoryMessage, HostTodo, JobEntry, Preset, RewindPlan, RewindResult, RewindScope, SessionEntry, SessionStatus, WalletLine, WalletReading, PlanAction } from "./session";
 import type { ContextBreakdown, ShellOption, ShellSettings } from "./shell";
 import type { SkillCatalog, SkillEntry } from "./skill";
-import type { UpdateProgress, VersionEntry, VersionHub, VersionNotes } from "./version";
+import type { StudioCrash, StudioLogs, UpdateProgress, VersionEntry, VersionHub, VersionNotes } from "./version";
 import type { ChangeDiff, CommitFile, CommitProposal, CommitRequest, CommitResult, WorkspaceBranch, WorkspaceBranches, WorkspaceChange, WorkspaceChanges, WorkspaceEntry, WorkspaceFile, WorkspaceFiles, WorkspaceGit, WorkspaceInfo } from "./workspace";
 
 // The port is one contract; its subjects each keep their own file, the way the
@@ -35,15 +35,15 @@ export type { AccountState, AccountUser, ApprovalDefault, ApprovalMode, Approval
   MemoryEntry, ModelEntry, ModelMode, ModelPrice, NetworkProbe, NetworkSettings, Preset, RewindPlan,
   RewindResult, RewindScope, RoleAssignments, RoleOverride, ScopeLayer, SessionEntry, SessionStatus,
   ShellOption, ShellSettings, SkillCatalog, SkillEntry, UpdateProgress, VersionEntry,
-  VersionHub, VersionNotes, WalletLine, WalletReading, ChangeDiff, CommitFile, CommitProposal, CommitRequest, CommitResult, WorkspaceBranch, WorkspaceBranches, WorkspaceChange, WorkspaceChanges, WorkspaceEntry, WorkspaceFile, WorkspaceFiles, WorkspaceGit, WorkspaceInfo };
+  StudioCrash, StudioLogs, VersionHub, VersionNotes, WalletLine, WalletReading, ChangeDiff, CommitFile, CommitProposal, CommitRequest, CommitResult, WorkspaceBranch, WorkspaceBranches, WorkspaceChange, WorkspaceChanges, WorkspaceEntry, WorkspaceFile, WorkspaceFiles, WorkspaceGit, WorkspaceInfo };
 
 import type { ExecutionGraphRead, TrajectoryRead, WireEvent } from "./wire";
 import type { PluginExport, PluginInstallRequest, PluginPackage, PluginPlan } from "./plugin";
 import type { MarketDetail, MarketList, MarketOwnRequest, MarketPackage, MarketPlan, MarketPublished, MarketQuery, MarketRequest, MarketSubmission, MarketVote } from "./market";
 import type { Appearance, ThemeImport, ThemePack } from "./look";
-import type { BrowserToolsSettings, ConfigProblem, ConfigRepair, DisplayCurrencyMode, DisplayCurrencySettings, PermissionLists, PermissionRules, ProgressWatchSettings, SandboxSettings } from "./boundary";
-import type { Protocol, ProviderCheck, ProviderDraft, ProviderEdit, ProviderEntry, ProviderModelCheck, ProviderModelCheckRequest, ProviderProbe, ProviderSetup } from "./provider";
-export type { ModelEffort, ModelLimit, Protocol, ProviderCheck, ProviderDraft, ProviderEdit, ProviderEntry, ProviderModelCheck, ProviderModelCheckRequest, ProviderProbe, ProviderSetup } from "./provider";
+import type { AskTimeoutSettings, AutoArchiveSettings, ChangedFilesSettings, FoldWorkSettings, BrowserToolsSettings, ConfigProblem, ConfigRepair, DisplayCurrencyMode, DisplayCurrencySettings, PermissionLists, PermissionRules, ProgressWatchSettings, SandboxSettings, WorkspaceRoots, ReceiptSettings } from "./boundary";
+import type { Protocol, ProviderCheck, ProviderDraft, ProviderEdit, ProviderEntry, ProviderModelCheck, ProviderModelCheckRequest, ProviderProbe, ProviderSetup, ProviderRemoval, ProviderPreset, ProviderPresetInstall } from "./provider";
+export type { ModelEffort, ModelLimit, Protocol, ProviderCheck, ProviderDraft, ProviderEdit, ProviderEntry, ProviderModelCheck, ProviderModelCheckRequest, ProviderProbe, ProviderSetup, ProviderRemoval, ProviderPreset, ProviderPresetInstall } from "./provider";
 import type { StoragePlan, StorageQuery, StorageState } from "./storage";
 import type { FeedbackEnv, FeedbackMine, FeedbackReceipt, FeedbackReplyReceipt, FeedbackRequest } from "./feedback";
 
@@ -146,6 +146,8 @@ export interface NotifyPrefs {
   turnDone: boolean;
   approval: boolean;
   ask: boolean;
+  feedbackReply: boolean;
+  sound: boolean;
 }
 
 export interface TrayPrefs {
@@ -258,15 +260,32 @@ export interface AgentPort {
   revokeRememberedProjectRule(rule: string): Promise<PermissionRules>;
   sandbox(): Promise<SandboxSettings>;
   saveSandbox(s: SandboxSettings): Promise<SandboxSettings>;
+  // Per-project grants kept in the user's home, never in the checkout. Adding
+  // or removing one rebuilds the runtime, so both are refused with
+  // workspace_roots.busy while work is running.
+  workspaceRoots(): Promise<WorkspaceRoots>;
+  addWorkspaceRoot(path: string): Promise<WorkspaceRoots>;
+  removeWorkspaceRoot(path: string): Promise<WorkspaceRoots>;
   browserTools(): Promise<BrowserToolsSettings>;
   // Writes the user file, then rebuilds: the tools are bound while assembling.
   saveBrowserTools(enabled: boolean): Promise<BrowserToolsSettings>;
   displayCurrency(): Promise<DisplayCurrencySettings>;
   // Applies live: the kernel announces it and every ledger rebinds; no rebuild.
   saveDisplayCurrency(mode: DisplayCurrencyMode): Promise<DisplayCurrencySettings>;
+  changedFilesSettings(): Promise<ChangedFilesSettings>;
+  saveChangedFilesSettings(show: boolean): Promise<ChangedFilesSettings>;
+  foldWorkSettings(): Promise<FoldWorkSettings>;
+  saveFoldWorkSettings(fold: boolean): Promise<FoldWorkSettings>;
   progressWatch(): Promise<ProgressWatchSettings>;
   // Applies to the running turn at its next round; no rebuild.
   saveProgressWatch(s: Pick<ProgressWatchSettings, "pause" | "rounds" | "tokenMultiple">): Promise<ProgressWatchSettings>;
+  askTimeout(): Promise<AskTimeoutSettings>;
+  saveAskTimeout(seconds: number): Promise<AskTimeoutSettings>;
+  autoArchive(): Promise<AutoArchiveSettings>;
+  // Read by the kernel's background sweep on each pass; no rebuild.
+  saveAutoArchive(s: Pick<AutoArchiveSettings, "enabled" | "days">): Promise<AutoArchiveSettings>;
+  receiptSettings(): Promise<ReceiptSettings>;
+  saveReceiptSettings(show: boolean): Promise<ReceiptSettings>;
   // null in a browser tab: there is no window to keep running.
   trayPrefs(): Promise<TrayPrefs | null>;
   setTrayPrefs(icon: boolean, closeToTray: boolean): Promise<TrayPrefs | null>;
@@ -317,6 +336,8 @@ export interface AgentPort {
   // The wire formats a source may be saved as. Read from the kernel so a
   // protocol added there reaches this panel without a frontend release.
   protocols(): Promise<Protocol[]>;
+  providerPresets(): Promise<ProviderPreset[]>;
+  installProviderPreset(req: ProviderPresetInstall): Promise<{ names: string[] }>;
   // Asks an endpoint what it is. Writes nothing — the answer is shown for
   // confirmation, because only the person holding the key knows what they
   // bought.
@@ -339,11 +360,13 @@ export interface AgentPort {
   // acknowledgement that closes it out.
   welcomeSeen(): Promise<boolean>;
   markWelcomed(): Promise<void>;
-  removeProvider(name: string): Promise<void>;
+  removeProvider(name: string): Promise<ProviderRemoval>;
   versions(): Promise<VersionHub>;
   pinVersion(version: string): Promise<void>;
   // A published release's notes. retry asks past the kernel's short memory of a failed fetch.
   versionNotes(version: string, retry?: boolean): Promise<VersionNotes>;
+  // Where this install keeps its logs, and the crash files waiting there.
+  studioLogs(): Promise<StudioLogs>;
   // Installs a published version, forward or back — the same call either way,
   // because a rollback that took a second code path would be the less-tested
   // one. Resolves only on failure: a success ends with the process handing over
@@ -381,6 +404,9 @@ export interface AgentPort {
   replyFeedback(receipt: string, body: string): Promise<FeedbackReplyReceipt>;
   // Records that the thread was shown up to reply upTo, so those replies stop counting as new.
   feedbackSeen(receipt: string, upTo: number): Promise<void>;
+  // Asks the window to raise the neutral "new reply" notification; the kernel
+  // answers for the switches. Rejects where there is no window to raise it.
+  announceFeedbackReply(): Promise<void>;
   workspaces(): Promise<WorkspaceInfo>;
   // Rebuilds the whole runtime against another folder. The conversation does
   // not come along, so the caller has to reload the transcript afterwards.

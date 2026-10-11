@@ -282,7 +282,7 @@ func (b bash) ExecuteDetailed(ctx context.Context, args json.RawMessage) (tool.D
 				reapShellProcess(cmd, tracked) // reap process-group stragglers the job left running (#3702)
 			}
 			b.writeEgressNote(out, prepared.EgressToken)
-			return "", normalizeBashRunError(jobCtx, runErr, p.PreserveBackgroundProcesses)
+			return "", jobExit(normalizeBashRunError(jobCtx, runErr, p.PreserveBackgroundProcesses))
 		})
 		msg := fmt.Sprintf("Started background job %q. It keeps running across turns; read new output with bash_output(job_id=%q), wait for it with wait, or stop it with kill_shell(job_id=%q).", job.ID, job.ID, job.ID)
 		// Background start is not a completed execution: completion is reported

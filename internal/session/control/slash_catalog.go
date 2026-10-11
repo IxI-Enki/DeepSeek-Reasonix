@@ -4,8 +4,10 @@ import (
 	"strings"
 
 	"reasonix/internal/base/i18n"
+	"reasonix/internal/base/textutil"
 	"reasonix/internal/contract/config"
 	"reasonix/internal/ext/command"
+	"reasonix/internal/ext/plugin"
 	"reasonix/internal/ext/pluginpkg"
 	"reasonix/internal/ext/skill"
 )
@@ -48,6 +50,7 @@ func SubmitSlashCommands(m i18n.Messages) []SlashItem {
 		{Label: "/reasoning-language", Insert: "/reasoning-language ", Hint: m.CmdReasonLang, Descend: true},
 		{Label: "/language", Insert: "/language ", Hint: m.CmdLanguage, Descend: true},
 		{Label: "/currency", Insert: "/currency ", Hint: m.CmdCurrency, Descend: true},
+		{Label: "/ask-timeout", Insert: "/ask-timeout ", Hint: m.CmdAskTimeout, Descend: true},
 	}
 }
 
@@ -132,13 +135,46 @@ func (c *Controller) completionNames(commands []command.Command, skills []skill.
 				continue
 			}
 			seen[p.Name] = true
-			items = append(items, SlashItem{
-				Label: "/" + p.Name, Insert: "/" + p.Name + " ",
-				Hint: p.Description, Kind: "prompt",
-			})
+			items = append(items, promptSlashItem(p))
 		}
 	}
 	return items
+}
+
+// The declarations come from an MCP server, so they are data, not text the
+// host wrote: controls and escape sequences are removed and each field is cut
+// to what a menu row can carry, with the count of what was left out.
+const (
+	maxPromptArgs      = 6
+	maxPromptArgName   = 48
+	maxPromptArgDesc   = 120
+	maxPromptItemHint  = 200
+	promptTruncatedEnd = "…"
+)
+
+func clampDisplay(s string, limit int) string {
+	s = textutil.SanitizeDisplay(s)
+	if r := []rune(s); len(r) > limit {
+		return string(r[:limit-1]) + promptTruncatedEnd
+	}
+	return s
+}
+
+func promptSlashItem(p plugin.Prompt) SlashItem {
+	item := SlashItem{
+		Label: "/" + p.Name, Insert: "/" + p.Name + " ",
+		Hint: clampDisplay(p.Description, maxPromptItemHint), Kind: "prompt",
+	}
+	for i, a := range p.Args {
+		if i == maxPromptArgs {
+			item.MoreArgs = len(p.Args) - maxPromptArgs
+			break
+		}
+		item.Args = append(item.Args, SlashArg{
+			Name: clampDisplay(a.Name, maxPromptArgName), Description: clampDisplay(a.Description, maxPromptArgDesc), Required: a.Required,
+		})
+	}
+	return item
 }
 
 // Where a command came from matters as much as what it does once plugins can

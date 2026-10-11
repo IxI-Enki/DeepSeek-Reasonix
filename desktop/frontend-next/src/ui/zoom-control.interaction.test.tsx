@@ -22,7 +22,7 @@ afterEach(() => {
 async function open() {
   const hub = new MockHub();
   const runtimes = await hub.runtimes();
-  const port = hub.portFor(runtimes[0]);
+  const port = hub.machinePort();
   const paint = renderHook(() => usePaint(hub, runtimes, false, () => {}));
   await waitFor(() => expect(paint.result.current.look.zoomRange).toBeDefined());
   const view = () => {
@@ -53,6 +53,15 @@ describe("the interface size control", () => {
     again();
     expect(slider().value).toBe("1.8");
     expect(slider().parentElement!.querySelector(".now")!.textContent).toBe("180%");
+  });
+
+  it("parks the thumb mid-track while the kernel has announced no range", async () => {
+    const { paint, again } = await open();
+    paint.result.current.look.zoomRange = undefined;
+    again();
+    expect(slider().disabled).toBe(true);
+    const at = (Number(slider().value) - Number(slider().min)) / (Number(slider().max) - Number(slider().min));
+    expect(at).toBe(0.5);
   });
 
   it("marks the preset a click chose and leaves the body text size alone", async () => {
