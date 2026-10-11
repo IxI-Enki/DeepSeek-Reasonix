@@ -44,6 +44,13 @@ ALLOWED_ORIGINS = "https://reasonix.io,https://www.reasonix.io"
 #   FEEDBACK_TURNSTILE_SECRET  optional; when set, submissions need a Turnstile token
 #                          with action "feedback" (hostname list: FEEDBACK_TURNSTILE_HOSTNAMES)
 FEEDBACK_ENABLED = "true"
+# Market mirror switch: "true" stores approved, pinned single-file skills from OSI-licensed
+# GitHub repositories under market/skills/ on the download bucket, and a takedown removes them.
+MARKET_MIRROR_ENABLED = "false"
+# Optional edge purge for taken-down objects (needs the CLOUDFLARE_ZONE_ID and
+# CLOUDFLARE_API_TOKEN secrets, a Cache Purge token); without them the objects'
+# one-hour cache lifetime bounds how long a withdrawn one keeps being served.
+MARKET_MIRROR_ORIGIN = "https://dl.reasonix.io"
 # Account link kill switch: "true" turns on the /v1/feedback/link routes, the union
 # read and replies from linked sibling installs; anything else leaves them absent.
 # Needs the FEEDBACK_ACCOUNT_SECRET secret, shared with the accounts worker.
@@ -94,6 +101,12 @@ max_concurrency = 1
 [[r2_buckets]]
 binding = "TELEMETRY_RAW"
 bucket_name = "reasonix-telemetry-raw"
+
+# The download bucket behind dl.reasonix.io. The registry writes only under its
+# market/ prefix.
+[[r2_buckets]]
+binding = "MARKET_MIRROR"
+bucket_name = "reasonix-releases"
 
 [[unsafe.bindings]]
 name = "RATE_LIMITER"

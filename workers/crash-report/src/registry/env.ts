@@ -11,6 +11,17 @@ export interface Bindings {
   OPS_EVENTS_URL?: string;
   OPS_EMIT_TOKEN?: string;
 
+  // The download bucket's market/ prefix. Mirroring runs only when the bucket is
+  // bound and MARKET_MIRROR is "true".
+  MARKET_MIRROR?: R2Bucket;
+  MARKET_MIRROR_ENABLED?: string;
+  GITHUB_TOKEN?: string;
+  // Optional edge purge for withdrawn objects: the download host, its zone and a
+  // Cache Purge token. Without them the objects' one-hour cache lifetime applies.
+  MARKET_MIRROR_ORIGIN?: string;
+  CLOUDFLARE_ZONE_ID?: string;
+  CLOUDFLARE_API_TOKEN?: string;
+
   // Plain vars (wrangler.toml [vars]).
   ACCOUNTS_ORIGIN: string;
   APP_ORIGIN: string;
