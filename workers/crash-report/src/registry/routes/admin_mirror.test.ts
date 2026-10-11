@@ -13,16 +13,18 @@ const live: PackageRow = {
   status: "active", publisher_id: 1, created_at: "2026-07-22T00:00:00.000Z", updated_at: "2026-07-22T00:30:00.000Z",
 };
 
-function database(row: PackageRow, pin: string) {
+function database(row: PackageRow, pin: string, opts: { shared?: boolean; onSetStatus?: () => void } = {}) {
   const versions = [{ id: 1, version: "1.0", source: row.source, content_hash: pin, risk_level: "", created_at: "2026-07-22T00:00:00.000Z" }];
   const db = {
     prepare(sql: string) {
       const statement = {
         bind: () => statement,
         async first() {
+          if (sql.startsWith("SELECT 1 AS hit")) return opts.shared ? { hit: 1 } : null;
           return sql.startsWith("UPDATE packages SET status") || sql.startsWith("SELECT * FROM packages") ? row : null;
         },
         async run() {
+          if (sql.startsWith("UPDATE packages SET status")) opts.onSetStatus?.();
           return { meta: { changes: 1 } };
         },
         async all() {
@@ -41,6 +43,9 @@ function r2() {
     async put(key: string, value: Uint8Array) {
       objects.set(key, value);
     },
+    async head(key: string) {
+      return objects.has(key) ? ({ key } as unknown as R2Object) : null;
+    },
     async delete(keys: string | string[]) {
       for (const k of [keys].flat()) objects.delete(k);
     },
@@ -55,11 +60,14 @@ function env(db: D1Database, bucket: R2Bucket, enabled: boolean): Bindings {
   };
 }
 
-function stubNetwork() {
+function stubNetwork(onRaw?: () => void) {
   vi.stubGlobal("fetch", vi.fn(async (url: string) => {
     if (String(url).includes("/me")) return Response.json({ user: { id: 1, handle: "admin", role: "admin", emailVerified: true } });
     if (String(url).startsWith("https://api.github.com/")) return Response.json({ license: { spdx_id: "MIT" } });
-    if (String(url).startsWith("https://raw.githubusercontent.com/")) return new Response(FILE as BodyInit);
+    if (String(url).startsWith("https://raw.githubusercontent.com/")) {
+      onRaw?.();
+      return new Response(FILE as BodyInit);
+    }
     return new Response("", { status: 404 });
   }));
 }
@@ -78,6 +86,51 @@ function context() {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("admin moderation and the market mirror", () => {
+  it("keeps the object when another live package uses the same pin, even on a takedown", async () => {
+    stubNetwork();
+    const pin = await skillContentDigest("x", FILE);
+    const { bucket, objects } = r2();
+    objects.set(mirrorKey(pin), FILE);
+    const c = context();
+    const e = env(database({ ...live, status: "hidden" }, pin, { shared: true }), bucket, true);
+    expect((await registryApp.fetch(post("hide"), e, c.ctx)).status).toBe(200);
+    await c.settled();
+    expect(objects.has(mirrorKey(pin))).toBe(true);
+  });
+
+  it("does not write back after a hide that landed while the file was being fetched", async () => {
+    const row = { ...live };
+    stubNetwork(() => {
+      row.status = "hidden";
+    });
+    const pin = await skillContentDigest("x", FILE);
+    const { bucket, objects } = r2();
+    const e = env(database(row, pin), bucket, true);
+    const c = context();
+    // the approval answers, then the package is hidden before the background task re-reads it
+    expect((await registryApp.fetch(post("approve", { expectedVersion: "1.0", expectedUpdatedAt: live.updated_at, expectedStatus: "pending", contentHash: pin }), e, c.ctx)).status).toBe(200);
+    await c.settled();
+    expect(objects.size).toBe(0);
+  });
+
+  it("purges the edge for a taken-down object when a token is configured", async () => {
+    const calls: string[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+      calls.push(String(url));
+      if (String(url).includes("/me")) return Response.json({ user: { id: 1, handle: "admin", role: "admin", emailVerified: true } });
+      return new Response("{}");
+    }));
+    const pin = await skillContentDigest("x", FILE);
+    const { bucket, objects } = r2();
+    objects.set(mirrorKey(pin), FILE);
+    const c = context();
+    const e = { ...env(database({ ...live, status: "hidden" }, pin), bucket, true), MARKET_MIRROR_ORIGIN: "https://dl.reasonix.test", CLOUDFLARE_ZONE_ID: "z1", CLOUDFLARE_API_TOKEN: "t" };
+    expect((await registryApp.fetch(post("hide"), e, c.ctx)).status).toBe(200);
+    await c.settled();
+    expect(objects.size).toBe(0);
+    expect(calls.some((u) => u.includes("/zones/z1/purge_cache"))).toBe(true);
+  });
+
   it("mirrors a skill when it is approved with its pin, and a takedown removes it", async () => {
     stubNetwork();
     const pin = await skillContentDigest("x", FILE);

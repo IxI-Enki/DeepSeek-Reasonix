@@ -90,6 +90,19 @@ export class PackageRepo {
     return res.results ?? [];
   }
 
+  // Whether a live package other than excludeId has a version with this pin, so
+  // a mirrored object is never removed from under a package still serving it.
+  async activeReferencers(contentHash: string, excludeId: number): Promise<boolean> {
+    const row = await this.db
+      .prepare(
+        `SELECT 1 AS hit FROM package_versions v JOIN packages p ON p.id = v.package_id
+         WHERE v.content_hash = ?1 AND p.status = 'active' AND p.id != ?2 LIMIT 1`,
+      )
+      .bind(contentHash, excludeId)
+      .first<{ hit: number }>();
+    return row !== null;
+  }
+
   async bySlug(slug: string): Promise<PackageRow | null> {
     return this.db.prepare("SELECT * FROM packages WHERE slug = ?1").bind(slug).first<PackageRow>();
   }

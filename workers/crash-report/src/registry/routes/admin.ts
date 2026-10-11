@@ -9,9 +9,9 @@ import { z } from "zod";
 import { CONTENT_DIGEST } from "../lib/validation";
 import { repinReviewedDigest } from "../pin";
 import { rescore } from "../db/ranking";
-import { MIRROR_KEEP_VERSIONS, mirrorSkill, pruneMirrors, type MirrorOutcome } from "../mirror";
+import { MIRROR_KEEP_VERSIONS, mirrorKey, mirrorSkill, pruneMirrors, purgeEdge, type MirrorOutcome } from "../mirror";
 import type { Context } from "hono";
-import type { PackageRow } from "../types";
+import type { PackageRow, VersionRow } from "../types";
 
 const admin = new Hono<AppEnv>();
 
@@ -21,24 +21,61 @@ function mirrorEnabled(c: Context<AppEnv>): boolean {
   return c.env.MARKET_MIRROR_ENABLED === "true" && !!c.env.MARKET_MIRROR;
 }
 
+// Every version of a package, newest first, paged so retention also reaches
+// objects older than the first page.
+async function allVersions(c: Context<AppEnv>, row: PackageRow) {
+  const out: VersionRow[] = [];
+  let page: { before?: string; beforeId?: number } = {};
+  for (let guard = 0; guard < 20; guard++) {
+    const got = await repos(c.env).packages.versions(row.id, { limit: 50, ...page });
+    out.push(...got.versions);
+    if (!got.pageInfo.hasMore) break;
+    page = { before: got.pageInfo.nextBefore ?? undefined, beforeId: got.pageInfo.nextBeforeId ?? undefined };
+  }
+  return out;
+}
+
+function edge(c: Context<AppEnv>) {
+  return { origin: c.env.MARKET_MIRROR_ORIGIN, zoneId: c.env.CLOUDFLARE_ZONE_ID, token: c.env.CLOUDFLARE_API_TOKEN, fetch };
+}
+
+async function removeMirrors(c: Context<AppEnv>, row: PackageRow, keep: number): Promise<void> {
+  const repo = repos(c.env).packages;
+  const removed = await pruneMirrors(c.env.MARKET_MIRROR!, await allVersions(c, row), keep, (hash) => repo.activeReferencers(hash, row.id));
+  await purgeEdge(edge(c), removed);
+}
+
 // Stores the live version of a pinned skill and drops versions past retention.
 // Failures never reach the moderation answer: a package that could not be
 // mirrored is installed from its source, as before.
 async function mirrorLive(c: Context<AppEnv>, row: PackageRow): Promise<MirrorOutcome | null> {
   if (!mirrorEnabled(c) || row.status !== "active") return null;
-  const bucket = c.env.MARKET_MIRROR!;
-  const { versions } = await repos(c.env).packages.versions(row.id, { limit: 50 });
+  const repo = repos(c.env).packages;
+  const versions = await allVersions(c, row);
   const live = versions.find((v) => v.version === row.latest_version);
   if (!live) return null;
-  const outcome = await mirrorSkill({ bucket, fetch, githubToken: c.env.GITHUB_TOKEN }, row, live);
-  if (outcome.state === "stored") await pruneMirrors(bucket, versions, MIRROR_KEEP_VERSIONS);
+  const outcome = await mirrorSkill(
+    {
+      bucket: c.env.MARKET_MIRROR!,
+      fetch,
+      githubToken: c.env.GITHUB_TOKEN,
+      stillLive: async () => {
+        const now = await repo.bySlug(row.slug);
+        return now?.status === "active" && now.latest_version === row.latest_version;
+      },
+      referencedElsewhere: (hash) => repo.activeReferencers(hash, row.id),
+    },
+    row,
+    live,
+  );
+  if (outcome.state === "stored") await removeMirrors(c, row, MIRROR_KEEP_VERSIONS);
+  if (outcome.state === "skipped" && outcome.reason === "withdrawn_during_write") await purgeEdge(edge(c), [mirrorKey(live.content_hash)]);
   return outcome;
 }
 
 async function withdrawMirrors(c: Context<AppEnv>, row: PackageRow): Promise<void> {
   if (!c.env.MARKET_MIRROR) return;
-  const { versions } = await repos(c.env).packages.versions(row.id, { limit: 50 });
-  await pruneMirrors(c.env.MARKET_MIRROR, versions, 0);
+  await removeMirrors(c, row, 0);
 }
 
 function inBackground(c: Context<AppEnv>, work: Promise<unknown>): void {
