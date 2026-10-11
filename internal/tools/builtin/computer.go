@@ -45,7 +45,7 @@ type computerRead struct{ session *computer.Session }
 func (computerRead) Name() string { return "computer_read" }
 
 func (computerRead) Description() string {
-	return "See another application on this computer, named as what=apps lists it. what=apps lists applications with windows; snapshot returns its accessibility tree with [aN] refs for computer_act; screenshot captures its front window (computer_act x/y use its pixels, and the person is shown it too)."
+	return "See another application, named as what=apps lists it. apps lists applications with windows; snapshot returns its accessibility tree with [aN] refs for computer_act; screenshot captures its front window (computer_act x/y use its pixels; the person sees it too)."
 }
 
 func (computerRead) Schema() json.RawMessage {
@@ -117,10 +117,10 @@ type computerAct struct{ session *computer.Session }
 func (computerAct) Name() string { return "computer_act" }
 
 func (computerAct) Description() string {
-	return "Operate another application. Steps run in order and stop at the first failure. Through its accessibility actions, leaving the pointer alone: " +
-		"click (ref, or x/y from a screenshot), right_click opens a ref's context menu, focus and set_value take a ref, type enters text where focus is and paste puts it there at once (the clipboard is borrowed and put back), key presses keys like Enter or Meta+s (control+s on Windows; times repeats), hold_key holds one for seconds. " +
+	return "Operate another application. Steps run in order and stop at the first failure. Through accessibility actions, pointer untouched: " +
+		"click (ref, or x/y from a screenshot), right_click opens a ref's context menu, focus and set_value take a ref, type enters text where focus is and paste puts it there at once (the clipboard is restored), key presses keys like Enter or Meta+s (control+s on Windows; times repeats), hold_key holds one for seconds. " +
 		"Paste needs the application in front on macOS; on Windows type, paste and key bring it forward. scroll brings a ref into view or turns the wheel by amount lines, wait pauses ms. " +
-		"pointer_move, pointer_click (button, times), pointer_drag (to_x/to_y) and pointer_position instead take the person's pointer and bring the application forward, approved separately; use them for what has no accessibility action, and the pointer goes back where it was. " +
+		"pointer_move, pointer_click (button, times), pointer_drag (to_x/to_y) and pointer_position instead take the person's pointer and bring the application forward, approved separately; use them for what has no accessibility action, then the pointer is restored. " +
 		"Returns a snapshot afterwards."
 }
 
