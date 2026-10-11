@@ -11,6 +11,12 @@ export interface Bindings {
   OPS_EVENTS_URL?: string;
   OPS_EMIT_TOKEN?: string;
 
+  // The download bucket's market/ prefix. Mirroring runs only when the bucket is
+  // bound and MARKET_MIRROR is "true".
+  MARKET_MIRROR?: R2Bucket;
+  MARKET_MIRROR_ENABLED?: string;
+  GITHUB_TOKEN?: string;
+
   // Plain vars (wrangler.toml [vars]).
   ACCOUNTS_ORIGIN: string;
   APP_ORIGIN: string;
