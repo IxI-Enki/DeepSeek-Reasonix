@@ -22,6 +22,20 @@ entry with the mutation. Neither changes blocks. The CLI itself and browser
 controls are outside this change. Missing receipts return 404, unsupported
 methods 405, and all routes use the existing admin bearer/lockout gate.
 
+## Reply eligibility
+
+A reporter's reply (`POST /v1/feedback/<receipt>/reply`) is accepted while the
+report is `needs_info`, `answered`, `recorded`, `in_progress` or `fixed`. Held,
+received, rejected, `wontfix` and `duplicate` reports answer 409
+`feedback.not_replyable`: the last two are maintainer decisions.
+
+A reply to a `fixed` report reopens it in the same transaction: status returns to
+`recorded`, `resolved_version` is cleared, and the reply is queued in
+`GET /v1/admin/feedback/replies/pending` with the stored `issueNumber`. A later
+`POST .../status` with `fixed` and a version works as for any recorded report.
+The adoption ledger is untouched, so an item already credited is not credited again.
+The per-report reply cap and hourly limits apply unchanged.
+
 ## Feedback levels
 
 An install earns one credit when a maintainer-authenticated `POST .../status`

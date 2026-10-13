@@ -610,8 +610,61 @@ describe("user replies", () => {
     await act(q, "ask", { body: "?" });
     expect(await errCode(await reply(q, { body: "hi" }, ids.b))).toBe("feedback.not_replyable");
     expect(await errCode(await post(`/v1/feedback/${q}/reply`, { body: "hi" }, { "x-install-id": ids.a, "x-install-token": "nope" }))).toBe("feedback.bad_token");
-    raw.prepare("UPDATE feedback SET status = 'fixed' WHERE receipt = ?").run(r);
-    expect(await errCode(await reply(r, { body: "hi" }))).toBe("feedback.not_replyable");
+    for (const closed of ["wontfix", "duplicate"]) {
+      raw.prepare("UPDATE feedback SET status = ? WHERE receipt = ?").run(closed, r);
+      expect(await errCode(await reply(r, { body: "hi" }))).toBe("feedback.not_replyable");
+      expect(statusOf(r)).toBe(closed);
+    }
+  });
+
+  describe("reopening a fixed report", () => {
+    const link = { issueNumber: 9, issueUrl: "https://github.com/o/r/issues/9" };
+    const fixedReceipt = async (version: string, installId = ids.a) => {
+      const r = await receiptOf({ installId });
+      await act(r, "release");
+      await act(r, "recorded", link);
+      expect((await act(r, "status", { status: "fixed", resolvedVersion: version })).status).toBe(200);
+      return r;
+    };
+    const versionOf = (r: string) => (raw.prepare("SELECT resolved_version AS v FROM feedback WHERE receipt = ?").get(r) as { v: string | null }).v;
+
+    it("moves a reply on a fixed report back to recorded, clears the version and queues it for the converter", async () => {
+      const r = await fixedReceipt("v1.2.3");
+      const res = await reply(r, { body: "still broken on 1.2.3" });
+      expect(res.status).toBe(201);
+      expect(statusOf(r)).toBe("recorded");
+      expect(versionOf(r)).toBeNull();
+      const { items } = await json(await get("/v1/admin/feedback/replies/pending"));
+      expect(items).toEqual([{ id: expect.any(String), receipt: r, body: "still broken on 1.2.3", issueNumber: 9 }]);
+      expect((await mine(ids.a)).find((i) => i.receipt === r)?.status).toBe("recorded");
+    });
+
+    it("lets the reopened report be fixed again with a concrete version", async () => {
+      const r = await fixedReceipt("next");
+      expect((await reply(r, { body: "not fixed" })).status).toBe(201);
+      expect(statusOf(r)).toBe("recorded");
+      const again = await act(r, "status", { status: "fixed", resolvedVersion: "v2.0.0" });
+      expect(again.status).toBe(200);
+      expect(statusOf(r)).toBe("fixed");
+      expect(versionOf(r)).toBe("v2.0.0");
+    });
+
+    it("keeps the ownership check and the per-item cap for fixed reports", async () => {
+      const r = await fixedReceipt("v1.2.3");
+      await receiptOf({ installId: ids.b });
+      expect(await errCode(await reply(r, { body: "not mine" }, ids.b))).toBe("feedback.not_replyable");
+      expect(statusOf(r)).toBe("fixed");
+      expect(versionOf(r)).toBe("v1.2.3");
+      for (let i = 0; i < 10; i++) {
+        raw.exec("DELETE FROM feedback_quota WHERE bucket LIKE 'rh:%'");
+        expect((await reply(r, { body: `r${i}` })).status).toBe(201);
+      }
+      raw.prepare("UPDATE feedback SET status = 'fixed', resolved_version = 'v1.2.3' WHERE receipt = ?").run(r);
+      raw.exec("DELETE FROM feedback_quota WHERE bucket LIKE 'rh:%'");
+      expect(await errCode(await reply(r, { body: "eleven" }))).toBe("feedback.reply_limit");
+      expect(statusOf(r)).toBe("fixed");
+      expect(versionOf(r)).toBe("v1.2.3");
+    });
   });
 
   it("caps a report at ten user replies", async () => {
