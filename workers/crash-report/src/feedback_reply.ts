@@ -12,7 +12,7 @@ import { MAX_REPLIES_PER_ITEM, MAX_REPLY_BYTES } from "./feedback_types";
 import { announce, type OpsWaiter } from "./ops_emit";
 import { scrubSensitiveText } from "./scrub";
 
-const REPLYABLE = ["needs_info", "answered", "recorded", "in_progress"];
+const REPLYABLE = ["needs_info", "answered", "recorded", "in_progress", "fixed"];
 const REPLYABLE_SQL = `(${REPLYABLE.map((s) => `'${s}'`).join(",")})`;
 
 export async function handleUserReply(request: Request, env: Env, receipt: string, ctx?: OpsWaiter): Promise<Response> {
@@ -39,7 +39,8 @@ export async function handleUserReply(request: Request, env: Env, receipt: strin
   const admission = await admit(env, { ipKey, installHash: who.installHash }, now, policy, blocked, ip);
   if (admission.kind === "refused") return admission.response;
   // One transaction decides ownership, status and the per-item cap, stores the
-  // reply and moves needs_info back to held, so none of it can land half-done.
+  // reply and moves needs_info back to held and fixed back to recorded, so none
+  // of it can land half-done.
   const at = now.toISOString();
   const owner = ownedByCaller(env, who.installHash, now);
   let res: D1Result;
@@ -52,7 +53,8 @@ export async function handleUserReply(request: Request, env: Env, receipt: strin
            AND (SELECT COUNT(*) FROM feedback_replies WHERE receipt = ? AND author = 'user') < ?`,
       ).bind(scrubSensitiveText(parsed.data.body), at, receipt, ...owner.binds, receipt, MAX_REPLIES_PER_ITEM),
       env.DB.prepare(
-        `UPDATE feedback SET status = CASE WHEN status = 'needs_info' THEN 'held' ELSE status END, updated_at = ?
+        `UPDATE feedback SET status = CASE status WHEN 'needs_info' THEN 'held' WHEN 'fixed' THEN 'recorded' ELSE status END,
+           resolved_version = CASE WHEN status = 'fixed' THEN NULL ELSE resolved_version END, updated_at = ?
          WHERE receipt = ? AND ${owner.sql} AND changes() > 0`,
       ).bind(at, receipt, ...owner.binds),
     ]);
