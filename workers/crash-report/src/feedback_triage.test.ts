@@ -97,14 +97,14 @@ describe("submit gate and trust", () => {
     expect(statusOf(await receiptOf({ installId: ids.b }))).toBe("held");
   });
 
-  it("receives a trusted submission that carries an image, without publishing the image", async () => {
+  it("receives a trusted submission that carries an image and publishes it", async () => {
     await act(await receiptOf(), "release");
     const r = await receiptOf(withImage);
     expect(statusOf(r)).toBe("received");
     expect((await mine(ids.a)).find((i) => i.receipt === r)).toMatchObject({ status: "received", underReview: false });
-    expect((await pendingItems()).find((i) => i.receipt === r).attachments).toEqual([]);
+    expect((await pendingItems()).find((i) => i.receipt === r).attachments).toEqual([expect.objectContaining({ released: true })]);
     expect(objects.size).toBe(1);
-    expect(raw.prepare("SELECT COUNT(*) AS n FROM feedback_public_images").get()).toEqual({ n: 0 });
+    expect(raw.prepare("SELECT COUNT(*) AS n FROM feedback_public_images").get()).toEqual({ n: 1 });
   });
 
   it("holds an untrusted install's image and a trusted install's link flood", async () => {
@@ -158,15 +158,27 @@ describe("submit gate and trust", () => {
   });
 });
 
-describe("images stay private until released", () => {
+describe("images are public once the feedback is released", () => {
   const keyOf = () => [...objects.keys()][0].slice("feedback/".length);
 
-  it("answers 404 before release and after a release without publishImages", async () => {
+  it("answers 404 while held and after a release that opts out of publishing", async () => {
     const r = await receiptOf(withImage);
     expect((await call(`/v1/feedback/attachments/${keyOf()}`)).status).toBe(404);
-    await act(r, "release");
+    await act(r, "release", { publishImages: false });
     expect((await call(`/v1/feedback/attachments/${keyOf()}`)).status).toBe(404);
     expect((await pendingItems())[0].attachments).toEqual([]);
+  });
+
+  it("publishes by default when a held report is released", async () => {
+    await act(await receiptOf(withImage), "release");
+    expect((await call(`/v1/feedback/attachments/${keyOf()}`)).status).toBe(200);
+  });
+
+  it("publishes at submission for an install that is already trusted", async () => {
+    await act(await receiptOf(), "release");
+    const r = await receiptOf(withImage);
+    expect((await call(`/v1/feedback/attachments/${keyOf()}`)).status).toBe(200);
+    expect((await pendingItems()).find((i) => i.receipt === r).attachments).toEqual([expect.objectContaining({ released: true })]);
   });
 
   it("serves and lists the image only after release with publishImages", async () => {

@@ -50,7 +50,7 @@ const text = (maxBytes: number) =>
     .refine((s) => new TextEncoder().encode(s).length <= maxBytes);
 
 export const ReplyBody = z.object({ body: text(MAX_REPLY_BYTES) });
-export const ReleaseBody = z.object({ publishImages: z.boolean().default(false) });
+export const ReleaseBody = z.object({ publishImages: z.boolean().default(true) });
 export const RejectBody = z.object({ reason: z.string().trim().min(1).max(200) });
 export const BlockBody = z.object({ target: z.string().max(80), reason: z.string().trim().min(1).max(200), hours: z.number().int().min(1).max(8760).optional() });
 export const UnblockBody = z.object({ target: z.string().max(80) });

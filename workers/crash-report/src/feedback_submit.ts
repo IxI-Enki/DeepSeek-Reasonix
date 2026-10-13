@@ -1,6 +1,6 @@
 import type { Env } from "./env";
 import { sendAlert } from "./alert";
-import { decodeAttachment, deleteAttachments, storeAttachment } from "./feedback_attachments";
+import { decodeAttachment, deleteAttachments, publishAttachments, storeAttachment } from "./feedback_attachments";
 import { feedbackEnabled, isKnownInstall, tokenMatches } from "./feedback_auth";
 import { readCappedText } from "./feedback_body";
 import { installHash, installToken, ipHash, newReceipt } from "./feedback_crypto";
@@ -176,6 +176,7 @@ export async function handleSubmit(request: Request, env: Env, ctx?: OpsWaiter):
     if (!outcome) return refuse("feedback.disabled", "could not allocate a receipt");
     return jsonResponse(receiptBody(outcome.replay, token), 200);
   }
+  if (outcome.status === "received") await publishAttachments(env, outcome.receipt, stored);
   announce(ctx, env, { t: "submitted", receipt: outcome.receipt, category: outcome.category, status: outcome.status });
   return jsonResponse(receiptBody(outcome, token), 201);
 }
