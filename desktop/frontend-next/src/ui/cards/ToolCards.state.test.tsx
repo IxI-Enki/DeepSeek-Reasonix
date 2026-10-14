@@ -38,11 +38,14 @@ describe("tool outcome cards", () => {
     const thumb = container.querySelector<HTMLButtonElement>('[data-action="tool.image-open"]');
     expect(thumb?.querySelector("img")?.getAttribute("src")).toBe(shot);
     expect(container.querySelector(".tshot-full")).toBeNull();
+    thumb!.focus();
     act(() => thumb!.click());
     expect(container.querySelector<HTMLImageElement>(".tshot-full img")?.getAttribute("src")).toBe(shot);
+    expect(container.querySelector(".tshot-full")?.contains(document.activeElement)).toBe(true);
     // A picture that fills the window has to close without a mouse.
     act(() => { document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" })); });
     expect(container.querySelector(".tshot-full")).toBeNull();
+    expect(document.activeElement).toBe(thumb);
   });
 
   it("says nothing where a call showed nothing", () => {

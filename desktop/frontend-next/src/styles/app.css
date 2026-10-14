@@ -1184,7 +1184,7 @@
   .tshot:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px }
   .tshot-full {
     position: fixed; inset: var(--chrome-h, 39px) 0 0; z-index: 60;
-    display: grid; place-items: center; padding: 28px; cursor: zoom-out;
+    display: grid; grid-template: minmax(0, 1fr) / minmax(0, 1fr); place-items: center; padding: 28px; cursor: zoom-out; outline: none;
     background: color-mix(in srgb, var(--page) 40%, transparent);
     -webkit-backdrop-filter: blur(14px) saturate(.92); backdrop-filter: blur(14px) saturate(.92);
   }

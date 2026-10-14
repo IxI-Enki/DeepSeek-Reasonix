@@ -17,7 +17,7 @@ import { Term, ToolOutput, BoundNote } from "./ToolOutput";
 import { ExtensionView } from "./ExtensionView";
 import { toolChangedFile, toolErrorDetail, toolFailed, toolFailureLabel, toolOutputEchoed, toolRefusalReason } from "./outcome";
 import { StudioIcon } from "../StudioIcon";
-import { useEscape } from "../dismiss";
+import { useImageZoom } from "../ImageZoom";
 
 // The spec pops a symbol as it settles — colour arriving is the finish signal.
 // Only the transition may fire it: a restored transcript is all settled cards,
@@ -285,24 +285,19 @@ export function ToolCard({
 }
 
 function ToolShots({ images }: { images?: string[] }) {
-  const [open, setOpen] = useState("");
-  useEscape(!!open, () => setOpen(""));
+  const { zoom, layer } = useImageZoom();
   if (!images?.length) return null;
   return (
     <>
       <div className="tshots">
         {images.map((src, i) => (
-          <button key={src.slice(0, 64) + i} className="tshot" data-action="tool.image-open" onClick={() => setOpen(src)}
+          <button key={src.slice(0, 64) + i} className="tshot" data-action="tool.image-open" onClick={(e) => zoom(src, e.currentTarget)}
             aria-label={t("放大第 {n} 张", { n: i + 1 })}>
             <img src={src} alt={t("工具截图 {n}", { n: i + 1 })} loading="lazy" />
           </button>
         ))}
       </div>
-      {open && (
-        <div className="tshot-full" data-action="tool.image-close" onClick={() => setOpen("")} role="presentation">
-          <img src={open} alt={t("放大的工具截图")} />
-        </div>
-      )}
+      {layer}
     </>
   );
 }

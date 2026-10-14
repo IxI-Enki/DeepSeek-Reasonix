@@ -15,11 +15,18 @@ import { useIme } from "../ime";
 import { touchKeyboard } from "../touchKeyboard";
 import { useFitHeight } from "../fitHeight";
 import { useViewer } from "../../state/viewer";
+import { useImageZoom } from "../ImageZoom";
 
 function SavedImage({ path, src }: { path: string; src: string }) {
   const [failed, setFailed] = useState(false);
+  const { zoom, layer } = useImageZoom();
   return <div className="user-image">
-    {failed ? <span>{t("图片不可用")}</span> : <img src={src} alt={path.split("/").at(-1)} loading="lazy" width={240} height={160} onError={() => setFailed(true)} />}
+    {failed ? <span>{t("图片不可用")}</span> : (
+      <button type="button" className="user-image-open" data-action="user.image-open" aria-label={t("放大图片")} onClick={(e) => zoom(src, e.currentTarget)}>
+        <img src={src} alt={path.split("/").at(-1)} loading="lazy" width={240} height={160} onError={() => setFailed(true)} />
+      </button>
+    )}
+    {layer}
   </div>;
 }
 

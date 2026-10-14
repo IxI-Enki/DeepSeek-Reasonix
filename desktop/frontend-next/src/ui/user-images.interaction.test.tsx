@@ -117,7 +117,7 @@ describe("saved images in user messages", () => {
   it("keeps the preview frame and reference readable if its file is missing", async () => {
     render(<UserCard item={item} port={port} />);
     const image = screen.getByRole("img");
-    const frame = image.parentElement;
+    const frame = image.closest(".user-image");
     fireEvent.error(image);
     await waitFor(() => expect(screen.queryByRole("img")).toBeNull());
     expect(screen.getByText("图片不可用").parentElement).toBe(frame);
@@ -154,5 +154,49 @@ describe("saved images in user messages", () => {
     await user.click(screen.getByRole("button", { name: "取消" }));
     expect(screen.getByRole("img")).toBeTruthy();
     write.mockRestore();
+  });
+});
+
+describe("enlarging a saved image", () => {
+  const thumb = () => screen.getByRole("button", { name: "放大图片" });
+  const layer = () => screen.queryByRole("dialog", { name: "放大的图片" });
+
+  it("opens from the thumbnail by keyboard, takes focus, and closes with Escape back onto the thumbnail", async () => {
+    render(<UserCard item={item} port={port} />);
+    expect(layer()).toBeNull();
+    thumb().focus();
+    await userEvent.keyboard("{Enter}");
+    expect(layer()).not.toBeNull();
+    expect(layer()!.querySelector("img")?.getAttribute("src")).toBe(port.workspaceImageURL(path));
+    expect(layer()!.contains(document.activeElement)).toBe(true);
+    await userEvent.keyboard("{Escape}");
+    expect(layer()).toBeNull();
+    expect(document.activeElement).toBe(thumb());
+  });
+
+  it("closes on a click or Enter inside the view and hands focus back each time", async () => {
+    render(<UserCard item={item} port={port} />);
+    await userEvent.click(thumb());
+    await userEvent.click(layer()!);
+    expect(layer()).toBeNull();
+    expect(document.activeElement).toBe(thumb());
+    await userEvent.click(thumb());
+    expect(layer()!.contains(document.activeElement)).toBe(true);
+    await userEvent.keyboard("{Enter}");
+    expect(layer()).toBeNull();
+    expect(document.activeElement).toBe(thumb());
+  });
+
+  it("enlarges each of several images on its own and leaves a failed one nothing to open", async () => {
+    const second = ".reasonix/attachments/second.png";
+    render(<UserCard item={{ ...item, attachments: [stored(path), stored(second)] }} port={port} />);
+    const thumbs = screen.getAllByRole("button", { name: "放大图片" });
+    expect(thumbs).toHaveLength(2);
+    await userEvent.click(thumbs[1]!);
+    expect(layer()!.querySelector("img")?.getAttribute("src")).toBe(port.workspaceImageURL(second));
+    await userEvent.keyboard("{Escape}");
+    fireEvent.error(thumbs[0]!.querySelector("img")!);
+    expect(screen.getAllByRole("button", { name: "放大图片" })).toHaveLength(1);
+    expect(screen.getByText("图片不可用")).toBeTruthy();
   });
 });
