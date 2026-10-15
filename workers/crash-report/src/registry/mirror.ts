@@ -113,7 +113,7 @@ async function repositoryLicense(deps: MirrorDeps, owner: string, repo: string):
   const headers: Record<string, string> = { accept: "application/vnd.github+json", "user-agent": "reasonix-registry-mirror" };
   if (deps.githubToken) headers.authorization = `Bearer ${deps.githubToken}`;
   try {
-    const res = await deps.fetch(`https://api.github.com/repos/${owner}/${repo}/license`, { headers, redirect: "error", signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
+    const res = await deps.fetch(`https://api.github.com/repos/${owner}/${repo}/license`, { headers, redirect: "manual", signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
     if (!res.ok) return null;
     const body = (await res.json()) as { license?: { spdx_id?: string } };
     return body.license?.spdx_id ?? null;
@@ -140,7 +140,7 @@ export async function mirrorSkill(
   if (!OSI_LICENSES.has(license)) return { state: "skipped", reason: "license_not_osi" };
   let bytes: Uint8Array | null;
   try {
-    const res = await deps.fetch(raw.toString(), { redirect: "error", signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
+    const res = await deps.fetch(raw.toString(), { redirect: "manual", signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
     if (!res.ok) return { state: "skipped", reason: "source_unreadable" };
     bytes = await readCapped(res, MIRROR_MAX_BYTES);
   } catch {
