@@ -21,6 +21,8 @@ ID_ORIGIN = "https://id.reasonix.io"
 GITHUB_REPO = "esengine/DeepSeek-Reasonix"
 GITHUB_REPO_ID = "1216785679"
 GITHUB_INSTALLATION_ID = "171606831"
+# Public feed of in-app feedback (already public as GitHub issues); pulled once FEEDBACK_PUBLIC_TOKEN is set.
+FEEDBACK_PUBLIC_URL = "https://crash.reasonix.io/v1/feedback/public"
 # Emails minted as forum admins/moderators on first sign-in.
 ADMIN_EMAILS = "359807859@qq.com"
 
