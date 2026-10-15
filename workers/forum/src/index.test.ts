@@ -88,4 +88,39 @@ describe("forum public API", () => {
     expect(queries.find((sql) => sql.includes("FROM posts"))).toContain("LIMIT ?5");
     expect(queries.find((sql) => sql.includes("FROM posts"))).toContain("p.created_at > ?3");
   });
+
+  it("answers /me with the caller's own standing and refuses an anonymous caller", async () => {
+    const anonymous = await app.request("https://forum.reasonix.io/me", {}, bindings({ prepare: () => { throw new Error("database should not be reached"); } } as unknown as D1Database));
+    expect(anonymous.status).toBe(401);
+
+    const queries: string[] = [];
+    const db = {
+      prepare(query: string) {
+        queries.push(query);
+        return {
+          bind() { return this; },
+          async run() { return {}; },
+          async first() {
+            return query.startsWith("SELECT email, handle")
+              ? { email: "a@example.test", handle: "alice", trust: 1, role: "member", silenced_until: null }
+              : { topics: 3, posts: 9, likesReceived: 4, solved: 1, joinedAt: "2026-08-01T00:00:00.000Z" };
+          },
+          async all() { return { results: [{ id: 5, title: "Mine", status: "open", replyCount: 2, createdAt: "2026-08-02T00:00:00.000Z", category: "help" }] }; },
+        };
+      },
+    } as unknown as D1Database;
+    const fetched = globalThis.fetch;
+    globalThis.fetch = (async () => new Response(JSON.stringify({ user: { email: "a@example.test", handle: "alice", emailVerified: true } }), { status: 200 })) as typeof fetch;
+    try {
+      const response = await app.request("https://forum.reasonix.io/me", { headers: { cookie: "rxid=tok" } }, bindings(db));
+      expect(response.status).toBe(200);
+      const body = await response.json() as { member: Record<string, unknown>; stats: Record<string, unknown>; recent: unknown[] };
+      expect(body.member).toEqual({ handle: "alice", trust: 1, role: "member", silencedUntil: null, dailyPostCap: 20, canPostLinks: true });
+      expect(body.stats).toEqual({ topics: 3, posts: 9, likesReceived: 4, solved: 1, joinedAt: "2026-08-01T00:00:00.000Z" });
+      expect(body.recent).toHaveLength(1);
+      expect(JSON.stringify(body)).not.toContain("example.test");
+    } finally {
+      globalThis.fetch = fetched;
+    }
+  });
 });

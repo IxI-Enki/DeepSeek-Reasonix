@@ -11,7 +11,7 @@ import { receiveGithubHook } from "./github_hook";
 import { installationToken } from "./github_app";
 import { reconcile } from "./github_reconcile";
 import { pullFeedback } from "./feedback_mirror";
-import { assertCanFlag, assertCanInteract, assertCanPost, dailyPostCap, rateLimited, AUTO_HIDE_FLAGS } from "./antispam";
+import { assertCanFlag, assertCanInteract, assertCanPost, dailyPostCap, rateLimited, AUTO_HIDE_FLAGS, TRUST } from "./antispam";
 
 const app = new Hono<AppEnv>();
 
@@ -73,6 +73,36 @@ async function enforcePostRate(c: { env: AppEnv["Bindings"]; req: { header: (k: 
 }
 
 app.get("/health", (c) => c.json({ ok: true, service: "forum" }));
+
+app.get("/me", async (c) => {
+  const member = c.get("member");
+  if (!member) throw new HttpError(401, "unauthorized", "Sign in to continue.");
+  const stats = await c.env.DB.prepare(
+    `SELECT
+       (SELECT COUNT(*) FROM topics WHERE author = ?1 AND status != 'hidden' AND gh_deleted_at IS NULL) AS topics,
+       (SELECT COUNT(*) FROM posts WHERE author = ?1 AND status = 'visible') AS posts,
+       (SELECT COALESCE(SUM(like_count), 0) FROM posts WHERE author = ?1 AND status = 'visible') AS likesReceived,
+       (SELECT COUNT(*) FROM topics WHERE author = ?1 AND status = 'solved') AS solved,
+       (SELECT created_at FROM members WHERE email = ?1) AS joinedAt`,
+  ).bind(member.email).first<{ topics: number; posts: number; likesReceived: number; solved: number; joinedAt: string | null }>();
+  const recent = await c.env.DB.prepare(
+    `SELECT t.id, t.title, t.status, t.reply_count AS replyCount, t.created_at AS createdAt, cat.slug AS category
+     FROM topics t JOIN categories cat ON cat.id = t.category_id
+     WHERE t.author = ?1 AND t.status != 'hidden' AND t.gh_deleted_at IS NULL ORDER BY t.created_at DESC LIMIT 5`,
+  ).bind(member.email).all();
+  return c.json({
+    member: {
+      handle: member.handle,
+      trust: member.trust,
+      role: member.role,
+      silencedUntil: member.silencedUntil && member.silencedUntil > new Date().toISOString() ? member.silencedUntil : null,
+      dailyPostCap: Number.isFinite(dailyPostCap(member.trust)) ? dailyPostCap(member.trust) : null,
+      canPostLinks: member.trust >= TRUST.BASIC,
+    },
+    stats: { topics: stats?.topics ?? 0, posts: stats?.posts ?? 0, likesReceived: stats?.likesReceived ?? 0, solved: stats?.solved ?? 0, joinedAt: stats?.joinedAt ?? null },
+    recent: recent.results ?? [],
+  });
+});
 
 app.get("/categories", async (c) => {
   const rows = await c.env.DB.prepare(
