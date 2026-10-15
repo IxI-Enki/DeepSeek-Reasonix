@@ -4,7 +4,7 @@ import CommunityJoin from '../components/CommunityJoin.astro';
 import SponsorSlot from '../components/SponsorSlot.astro';
 const base = import.meta.env.BASE_URL.replace(/\/$/, '');
 const repo = 'https://github.com/esengine/DeepSeek-Reasonix';
-const { title, description, titleEn, titleZh, wide } = Astro.props;
+const { title, description, titleEn, titleZh, wide, dash } = Astro.props;
 ---
 <Base title={title} description={description} titleEn={titleEn} titleZh={titleZh}>
   <Fragment slot="head">
@@ -25,7 +25,7 @@ const { title, description, titleEn, titleZh, wide } = Astro.props;
   </header>
 
   <main class="auth-main">
-    <div class={wide ? 'auth-card wide' : 'auth-card'}>
+    <div class={dash ? 'auth-card wide dash' : wide ? 'auth-card wide' : 'auth-card'}>
       <slot />
     </div>
   </main>

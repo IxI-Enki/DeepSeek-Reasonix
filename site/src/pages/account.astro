@@ -4,6 +4,7 @@ import PasswordInput from '../components/PasswordInput.astro';
 ---
 <Account
   wide
+  dash
   title="Your account — Reasonix"
   titleEn="Your account — Reasonix"
   titleZh="我的账号 — Reasonix"
@@ -14,12 +15,53 @@ import PasswordInput from '../components/PasswordInput.astro';
 
   <div id="account-view" hidden>
     <div class="acct-id">
-      <div>
+      <span id="acct-avatar" class="acct-avatar" aria-hidden="true"></span>
+      <div class="acct-who">
+        <div id="acct-name" class="acct-name-big"></div>
         <div id="acct-handle" class="acct-handle"></div>
         <div id="acct-email" class="acct-email"></div>
-        <a id="acct-profile-link" class="auth-small" href="/u/"><span class="l-en">View public profile</span><span class="l-zh">查看公开主页</span></a>
+        <div class="acct-chips">
+          <span id="acct-role" class="acct-role"></span>
+          <span id="acct-verified" class="acct-chip"></span>
+          <span id="acct-joined" class="acct-chip"></span>
+        </div>
       </div>
-      <span id="acct-role" class="acct-role"></span>
+      <a id="acct-profile-link" class="btn btn-ghost sm" href="/u/"><span class="l-en">Public profile</span><span class="l-zh">公开主页</span></a>
+    </div>
+
+    <div id="acct-overview" class="acct-grid" role="group" aria-label="Overview">
+      <article class="acct-card" id="card-forum">
+        <h3><span class="l-en">Community</span><span class="l-zh">社区</span></h3>
+        <div class="acct-level"><span id="forum-level" class="acct-lv">—</span><span id="forum-level-note" class="acct-note"></span></div>
+        <dl class="acct-stats">
+          <div><dt><span class="l-en">Topics</span><span class="l-zh">话题</span></dt><dd id="st-topics">—</dd></div>
+          <div><dt><span class="l-en">Replies</span><span class="l-zh">回复</span></dt><dd id="st-posts">—</dd></div>
+          <div><dt><span class="l-en">Likes</span><span class="l-zh">获赞</span></dt><dd id="st-likes">—</dd></div>
+          <div><dt><span class="l-en">Solved</span><span class="l-zh">已解决</span></dt><dd id="st-solved">—</dd></div>
+        </dl>
+        <p id="forum-perms" class="acct-note"></p>
+        <ul id="forum-recent" class="acct-recent"></ul>
+        <a class="acct-more" href="/community/"><span class="l-en">Open the forum →</span><span class="l-zh">进入论坛 →</span></a>
+      </article>
+
+      <article class="acct-card" id="card-feedback">
+        <h3><span class="l-en">Feedback level</span><span class="l-zh">反馈等级</span></h3>
+        <p class="acct-big"><span class="l-en">Not linked yet</span><span class="l-zh">尚未关联</span></p>
+        <p class="acct-note"><span class="l-en">Reports you send from Studio earn a level as they ship, from New seed up to Grove, and a higher level raises your hourly and daily limits. Your level shows up here once Studio links to this account.</span><span class="l-zh">在 Studio 里提交的反馈被采纳后会提升等级（新种 → 共林），等级越高每小时和每天可提交的条数越多。Studio 与此账号关联后，你的等级会显示在这里。</span></p>
+      </article>
+
+      <article class="acct-card" id="card-devices">
+        <h3><span class="l-en">Devices</span><span class="l-zh">设备</span></h3>
+        <p class="acct-big"><span id="dev-total">—</span> <span class="acct-unit"><span class="l-en">registered</span><span class="l-zh">台已注册</span></span></p>
+        <p class="acct-note" id="dev-online"></p>
+        <a class="acct-more" href="/remote/"><span class="l-en">Open Web Studio →</span><span class="l-zh">进入网页版 Studio →</span></a>
+      </article>
+
+      <article class="acct-card" id="card-backups">
+        <h3><span class="l-en">Config backups</span><span class="l-zh">配置备份</span></h3>
+        <p class="acct-big"><span id="bk-total">—</span> <span class="acct-unit"><span class="l-en">saved</span><span class="l-zh">份</span></span></p>
+        <p class="acct-note"><span class="l-en">Back up and restore your Studio settings from Studio.</span><span class="l-zh">在 Studio 里备份和恢复你的设置。</span></p>
+      </article>
     </div>
 
     <div id="verification-wrap" hidden>
@@ -75,4 +117,5 @@ import PasswordInput from '../components/PasswordInput.astro';
       <button id="delete-btn" type="button" class="acct-danger"><span class="l-en">Delete account</span><span class="l-zh">注销账号</span></button>
     </div>
   </div>
+<script>import "../scripts/account-overview.js";</script>
 </Account>
