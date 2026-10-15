@@ -120,13 +120,26 @@ describe("skill mirror", () => {
     await mirrorSkill(deps(b, { onFetch: (_u, init) => init && seen.push(init) }), pkg, version);
     expect(seen.length).toBe(2);
     for (const init of seen) {
-      expect(init.redirect).toBe("error");
+      // The edge runtime accepts only "follow" and "manual"; "error" throws there.
+      expect(init.redirect).toBe("manual");
       expect(init.signal).toBeInstanceOf(AbortSignal);
     }
     expect(FETCH_TIMEOUT_MS).toBeLessThanOrEqual(10_000);
     const hang = deps(b, { license: "MIT" });
     hang.fetch = (async () => { throw new DOMException("timed out", "TimeoutError"); }) as typeof fetch;
     expect(await mirrorSkill(hang, pkg, version)).toEqual({ state: "skipped", reason: "license_unknown" });
+  });
+
+  it("never follows a redirect: a 3xx from the licence or the file is a refusal", async () => {
+    const { bucket: b, objects } = bucket();
+    const moved = deps(b);
+    moved.fetch = (async () => new Response(null, { status: 301, headers: { location: "https://evil.example/" } })) as typeof fetch;
+    expect(await mirrorSkill(moved, pkg, version)).toEqual({ state: "skipped", reason: "license_unknown" });
+    const fileMoved = deps(b);
+    const ok = fileMoved.fetch;
+    fileMoved.fetch = (async (url: string, init?: RequestInit) => (String(url).includes("/license") ? ok(url, init) : new Response(null, { status: 302 }))) as typeof fetch;
+    expect(await mirrorSkill(fileMoved, pkg, version)).toEqual({ state: "skipped", reason: "source_unreadable" });
+    expect(objects.size).toBe(0);
   });
 
   it("writes nothing when the package was taken down while the bytes were fetched", async () => {
