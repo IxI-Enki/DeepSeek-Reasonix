@@ -19,6 +19,9 @@ export interface Bindings {
   GITHUB_APP_ID?: string;
   GITHUB_APP_PRIVATE_KEY?: string;
   GITHUB_RECONCILE_DAYS?: string;
+  // The feedback worker's public feed the forum mirrors; nothing is pulled until the token is set.
+  FEEDBACK_PUBLIC_URL?: string;
+  FEEDBACK_PUBLIC_TOKEN?: string;
 }
 
 // A signed-in forum member, resolved from the shared identity + local state.

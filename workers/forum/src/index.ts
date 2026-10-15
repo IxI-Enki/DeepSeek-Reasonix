@@ -10,6 +10,7 @@ import { loadMember, currentMember, HttpError } from "./identity";
 import { receiveGithubHook } from "./github_hook";
 import { installationToken } from "./github_app";
 import { reconcile } from "./github_reconcile";
+import { pullFeedback } from "./feedback_mirror";
 import { assertCanFlag, assertCanInteract, assertCanPost, dailyPostCap, rateLimited, AUTO_HIDE_FLAGS } from "./antispam";
 
 const app = new Hono<AppEnv>();
@@ -282,19 +283,25 @@ async function setLike(c: Context<AppEnv>, liked: boolean): Promise<Response> {
 app.post("/posts/:id/likes", (c) => setLike(c, true));
 app.delete("/posts/:id/likes", (c) => setLike(c, false));
 
-// Reads GitHub back into the mirror. It does nothing until the App id, its private
-// key and the installation are all configured, and it never writes to GitHub.
+// Reads GitHub and the feedback feed back into the mirror. Each step does nothing until
+// its own secrets are configured, and neither writes anywhere but the forum's own rows.
 async function scheduled(_controller: ScheduledController, env: Bindings, ctx: ExecutionContext) {
-  if (!env.GITHUB_APP_ID || !env.GITHUB_APP_PRIVATE_KEY || !env.GITHUB_INSTALLATION_ID || !env.GITHUB_REPO || !env.GITHUB_REPO_ID) return;
-  const [owner, name] = env.GITHUB_REPO.split("/");
-  if (!owner || !name) return;
-  const days = Number(env.GITHUB_RECONCILE_DAYS);
-  ctx.waitUntil(
-    reconcile({
-      db: env.DB, owner, name, repoId: env.GITHUB_REPO_ID, days: days > 0 ? days : undefined,
-      token: installationToken({ appId: env.GITHUB_APP_ID, privateKey: env.GITHUB_APP_PRIVATE_KEY, installationId: env.GITHUB_INSTALLATION_ID, repository: name }),
-    }).then((report) => console.log("github reconcile", JSON.stringify(report))),
-  );
+  // Two independent steps: one failing or not being configured never stops the other.
+  if (env.GITHUB_APP_ID && env.GITHUB_APP_PRIVATE_KEY && env.GITHUB_INSTALLATION_ID && env.GITHUB_REPO && env.GITHUB_REPO_ID) {
+    const [owner, name] = env.GITHUB_REPO.split("/");
+    const days = Number(env.GITHUB_RECONCILE_DAYS);
+    if (owner && name) {
+      ctx.waitUntil(
+        reconcile({
+          db: env.DB, owner, name, repoId: env.GITHUB_REPO_ID, days: days > 0 ? days : undefined,
+          token: installationToken({ appId: env.GITHUB_APP_ID, privateKey: env.GITHUB_APP_PRIVATE_KEY, installationId: env.GITHUB_INSTALLATION_ID, repository: name }),
+        }).then((report) => console.log("github reconcile", JSON.stringify(report))),
+      );
+    }
+  }
+  if (env.FEEDBACK_PUBLIC_URL && env.FEEDBACK_PUBLIC_TOKEN) {
+    ctx.waitUntil(pullFeedback({ db: env.DB, url: env.FEEDBACK_PUBLIC_URL, token: env.FEEDBACK_PUBLIC_TOKEN }).then((report) => console.log("feedback mirror", JSON.stringify(report))));
+  }
 }
 
 export default Object.assign(app, { scheduled });
