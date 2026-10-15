@@ -1545,3 +1545,11 @@ body, .btn, .lang-switch button, .theme-switch button,
   .acct-grid { grid-template-columns: 1fr; }
   .acct-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
+
+.acct-track { height: 8px; border-radius: 999px; overflow: hidden; background: var(--bg-soft); }
+.acct-track i { display: block; height: 100%; border-radius: 999px; background: var(--accent); }
+.acct-track[hidden] { display: none; }
+#fb-installs li > span:first-child, #fb-items li > span:first-child { min-width: 0; font-size: 14px; color: var(--ink); }
+#fb-installs:not(:empty) + #fb-items { margin-top: 10px; }
+#fb-items a { color: var(--accent); text-decoration: none; }
+#fb-items a:hover { text-decoration: underline; }

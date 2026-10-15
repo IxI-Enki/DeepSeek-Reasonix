@@ -53,3 +53,63 @@ export function forumState(summary) {
   if (!summary) return "unavailable";
   return summary.topics === 0 && summary.posts === 0 ? "empty" : "active";
 }
+
+const LEVELS = [
+  ["New seed", "新种"],
+  ["Sprout", "萌芽"],
+  ["Seedling", "幼苗"],
+  ["Sapling", "小树"],
+  ["Bloom", "繁花"],
+  ["Canopy", "成荫"],
+  ["Grove", "共林"],
+];
+
+// [en, zh] for a feedback level, null outside the known ladder.
+export function levelName(level) {
+  return Number.isInteger(level) && level >= 0 && level < LEVELS.length ? LEVELS[level] : null;
+}
+
+const TRUST = new Set(["active", "legacy_active", "lapsed", "revoked", "none"]);
+const count = (n) => (Number.isInteger(n) && n >= 0 ? n : null);
+
+function standing(p) {
+  if (!p || count(p.level) === null || count(p.adoptedCount) === null || !TRUST.has(p.trustState)) return null;
+  const limits = p.effectiveLimits ?? {};
+  return {
+    level: p.level,
+    adopted: p.adoptedCount,
+    base: count(p.currentThreshold),
+    nextLevel: count(p.nextLevel),
+    nextThreshold: count(p.nextThreshold),
+    remaining: count(p.remaining),
+    trustState: p.trustState,
+    trustExpiresAt: typeof p.trustExpiresAt === "string" ? p.trustExpiresAt : null,
+    perHour: count(limits.reportsPerHour),
+    perDay: count(limits.reportsPerDay),
+    repliesPerHour: count(limits.repliesPerHour),
+  };
+}
+
+// Share of the way to the next level, or null at the top or when the thresholds do not hold together.
+export function levelProgress(s) {
+  if (!s || s.nextThreshold === null || s.base === null || s.nextThreshold <= s.base) return null;
+  return Math.min(1, Math.max(0, (s.adopted - s.base) / (s.nextThreshold - s.base)));
+}
+
+// "unavailable" is a failed or malformed answer; "none" is an answered request with no linked install.
+export function feedbackSummary(payload) {
+  if (!payload || !Array.isArray(payload.installs) || !Array.isArray(payload.items)) return { state: "unavailable" };
+  const installs = payload.installs.map((i) => ({ id: String(i?.id ?? ""), linkedAt: i?.linkedAt, standing: standing(i?.profile) })).filter((i) => /^[0-9a-f]{12}$/.test(i.id));
+  if (installs.length === 0) return { state: "none" };
+  const items = payload.items
+    .filter((it) => typeof it?.receipt === "string" && typeof it.titleSnippet === "string")
+    .slice(0, 5)
+    .map((it) => ({
+      receipt: it.receipt,
+      title: it.titleSnippet,
+      status: typeof it.status === "string" ? it.status : "",
+      issueNumber: count(it.issueNumber),
+      version: typeof it.resolvedVersion === "string" && /^[0-9A-Za-z][0-9A-Za-z.+-]{0,31}$/.test(it.resolvedVersion) ? it.resolvedVersion : null,
+    }));
+  return { state: "linked", headline: standing(payload.profile), installs, items };
+}
