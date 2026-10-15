@@ -70,3 +70,11 @@ WHERE status IN ('recorded','in_progress','fixed','wontfix','duplicate')
 GROUP BY install_hash;
 
 INSERT OR IGNORE INTO feedback_config (key, value, updated_at) VALUES ('trust_backfilled_v1', 1, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+CREATE TABLE IF NOT EXISTS feedback_reply_attachments (
+  reply_id INTEGER PRIMARY KEY,
+  receipt TEXT NOT NULL,
+  attachments_json TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS feedback_reply_attachments_receipt ON feedback_reply_attachments (receipt);

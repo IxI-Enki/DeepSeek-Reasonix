@@ -1,13 +1,16 @@
 import type { Env } from "./env";
+import { attachmentUrl } from "./feedback_attachments";
+import { PUBLIC_ORIGIN } from "./feedback_admin";
 import { listLimit, load, readJson } from "./feedback_admin_store";
 import { adoptionStatements, clearRevokedStatement, itemKeyOf, markRevokedStatement, tombstoneStatements } from "./feedback_adoptions";
 import { audit, auditStatement, blockKey, capOverride, putBlock, revokeTrustStatement, setCapOverride } from "./feedback_blocks";
 import { jsonResponse, refuse } from "./feedback_http";
 import { AdoptionBody, BlockBody, CapBody, UnblockBody } from "./feedback_schema";
-import { CONCRETE_VERSION, GLOBAL_DAILY, MANUAL_TRUST_DAYS } from "./feedback_types";
+import { CONCRETE_VERSION, GLOBAL_DAILY, MANUAL_TRUST_DAYS, type StoredAttachment } from "./feedback_types";
 import { scrubSensitiveText } from "./scrub";
 
 const BLOCKS_LIMIT = 200;
+const KEY_CHUNK = 50;
 
 export async function setReceiptTrust(env: Env, receipt: string, grant: boolean): Promise<Response> {
   const row = await load(env, receipt);
@@ -63,7 +66,28 @@ async function unhandledReplies(env: Env, url: URL, handled: number): Promise<Re
   )
     .bind(handled, listLimit(url))
     .all<{ id: number; receipt: string; body: string; issue_number: number | null }>();
-  return jsonResponse({ items: results.map((r) => ({ id: String(r.id), receipt: r.receipt, body: r.body, issueNumber: r.issue_number })) });
+  const images = await replyImages(env, results.map((r) => r.id));
+  return jsonResponse({ items: results.map((r) => ({ id: String(r.id), receipt: r.receipt, body: r.body, issueNumber: r.issue_number, attachments: images.get(r.id) ?? [] })) });
+}
+
+// Only released images carry a link, the converter's rule for a report's too.
+async function replyImages(env: Env, ids: number[]) {
+  const out = new Map<number, { name: string; contentType: string; url?: string; released: boolean }[]>();
+  if (ids.length === 0) return out;
+  const marks = ids.map(() => "?").join(",");
+  const { results } = await env.DB.prepare(`SELECT reply_id, attachments_json FROM feedback_reply_attachments WHERE reply_id IN (${marks})`).bind(...ids).all<{ reply_id: number; attachments_json: string }>();
+  const stored = results.map((r) => ({ id: r.reply_id, list: JSON.parse(r.attachments_json) as StoredAttachment[] }));
+  const keys = stored.flatMap((r) => r.list.map((a) => a.key));
+  const released = new Set<string>();
+  for (let i = 0; i < keys.length; i += KEY_CHUNK) {
+    const chunk = keys.slice(i, i + KEY_CHUNK);
+    const { results: pub } = await env.DB.prepare(`SELECT key FROM feedback_public_images WHERE key IN (${chunk.map(() => "?").join(",")})`).bind(...chunk).all<{ key: string }>();
+    for (const p of pub) released.add(p.key);
+  }
+  for (const r of stored) {
+    out.set(r.id, r.list.map((a) => (released.has(a.key) ? { name: a.name, contentType: a.contentType, url: attachmentUrl(PUBLIC_ORIGIN, a.key), released: true } : { name: a.name, contentType: a.contentType, released: false })));
+  }
+  return out;
 }
 
 export const pendingReplies = (env: Env, url: URL) => unhandledReplies(env, url, 0);

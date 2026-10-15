@@ -47,6 +47,13 @@ export async function deleteAttachments(r2: R2Bucket, stored: StoredAttachment[]
   if (stored.length > 0) await r2.delete(stored.map((a) => ATTACHMENT_PREFIX + a.key));
 }
 
+// Report images and the images its replies carried: one set for release,
+// takedown, retention and serving, so a reply image is never a second lifecycle.
+export async function allAttachmentsOf(env: Env, row: { receipt: string; attachments_json: string }): Promise<StoredAttachment[]> {
+  const { results } = await env.DB.prepare("SELECT attachments_json FROM feedback_reply_attachments WHERE receipt = ? ORDER BY reply_id").bind(row.receipt).all<{ attachments_json: string }>();
+  return [...(JSON.parse(row.attachments_json) as StoredAttachment[]), ...results.flatMap((r) => JSON.parse(r.attachments_json) as StoredAttachment[])];
+}
+
 export function attachmentUrl(origin: string, key: string): string {
   return `${origin}${ATTACHMENT_ROUTE}${key}`;
 }

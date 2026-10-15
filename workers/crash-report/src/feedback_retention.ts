@@ -19,10 +19,12 @@ async function purgeChunk(env: Env, status: string, cutoff: string): Promise<num
     .bind(status, cutoff, cutoff, CHUNK)
     .all<StaleRow>();
   if (results.length === 0) return 0;
-  const attachments = results.flatMap((r) => JSON.parse(r.attachments_json) as StoredAttachment[]);
-  if (env.TELEMETRY_RAW) await env.TELEMETRY_RAW.delete(attachments.map((a) => ATTACHMENT_PREFIX + a.key));
   const marks = results.map(() => "?").join(",");
   const receipts = results.map((r) => r.receipt);
+  const { results: replyRows } = await env.DB.prepare(`SELECT attachments_json FROM feedback_reply_attachments WHERE receipt IN (${marks})`).bind(...receipts).all<{ attachments_json: string }>();
+  const attachments = [...results, ...replyRows].flatMap((r) => JSON.parse(r.attachments_json) as StoredAttachment[]);
+  if (env.TELEMETRY_RAW && attachments.length > 0) await env.TELEMETRY_RAW.delete(attachments.map((a) => ATTACHMENT_PREFIX + a.key));
+  await env.DB.prepare(`DELETE FROM feedback_reply_attachments WHERE receipt IN (${marks})`).bind(...receipts).run();
   await env.DB.prepare(`DELETE FROM feedback_replies WHERE receipt IN (${marks})`).bind(...receipts).run();
   await env.DB.prepare(`DELETE FROM feedback_public_images WHERE receipt IN (${marks})`).bind(...receipts).run();
   await env.DB.prepare(`DELETE FROM feedback WHERE status = ? AND receipt IN (${marks})`)
