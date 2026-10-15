@@ -23,7 +23,7 @@ try {
     const tb = await trigger.boundingBox();
     await page.mouse.move(tb.x + tb.width / 2, tb.y + tb.height / 2);
     await page.waitForTimeout(250);
-    const card = page.locator(".chrome-context-card").first();
+    const card = page.locator(".studio-context-anchor .chrome-context-card");
     check(`${scheme}: the card opens while the pointer is on the meter`, await card.isVisible());
     const target = card.locator("button, a").first();
     const cb = await target.boundingBox();
