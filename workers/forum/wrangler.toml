@@ -24,6 +24,11 @@ GITHUB_INSTALLATION_ID = "171606831"
 # Emails minted as forum admins/moderators on first sign-in.
 ADMIN_EMAILS = "359807859@qq.com"
 
+# Reconcile job (GitHub Discussions mirror): every 30 minutes; it does nothing until the
+# GITHUB_APP_ID and GITHUB_APP_PRIVATE_KEY worker secrets are set.
+[triggers]
+crons = ["*/30 * * * *"]
+
 [[d1_databases]]
 binding = "DB"
 database_name = "reasonix-forum"
