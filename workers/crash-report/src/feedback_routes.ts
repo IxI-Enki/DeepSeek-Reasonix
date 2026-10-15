@@ -3,6 +3,7 @@ import { handleAdmin } from "./feedback_admin";
 import { ATTACHMENT_ROUTE, serveAttachment } from "./feedback_attachments";
 import { refuse } from "./feedback_http";
 import { handleLinkRoute } from "./feedback_link";
+import { handlePublicFeed } from "./feedback_public";
 import { handleMine } from "./feedback_read";
 import { handleUserReply } from "./feedback_reply";
 import { servePage } from "./feedback_admin_page";
@@ -17,6 +18,7 @@ export async function handleFeedbackRoute(request: Request, env: Env, ctx?: OpsW
   const page = servePage(request, path);
   if (page) return page;
   if (path === "/v1/feedback") return method === "POST" ? handleSubmit(request, env, ctx) : refuse("feedback.method_not_allowed", "method not allowed");
+  if (path === "/v1/feedback/public") return handlePublicFeed(request, env, url);
   if (path === "/v1/feedback/mine") return method === "GET" ? handleMine(request, env) : refuse("feedback.method_not_allowed", "method not allowed");
   const linked = await handleLinkRoute(request, env, path);
   if (linked) return linked;
