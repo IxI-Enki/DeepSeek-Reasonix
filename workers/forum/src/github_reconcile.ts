@@ -165,25 +165,35 @@ export async function reconcile(o: ReconcileOptions): Promise<ReconcileReport> {
     }
     // Only a complete listing, comments and every comment's replies, can say a stored comment is gone.
     const complete = !info?.hasNextPage && !comments.some((c) => c.replies?.pageInfo?.hasNextPage);
-    if (complete) statements.push(...goneComments(d.id, all.map((c) => c.id)));
+    if (complete) statements.push(...(await goneComments(d.id, all.map((c) => c.id))));
     await apply(statements);
   }
 
-  function goneComments(discussionNode: string, present: string[]): Stmt[] {
-    const marks = present.map((_, i) => `?${i + 3}`).join(", ");
-    return [
-      o.db.prepare(
-        `UPDATE posts SET status = 'deleted', body = '', gh_deleted_at = COALESCE(gh_deleted_at, ?2)
-         WHERE source = 'github' AND gh_deleted_at IS NULL AND gh_node_id IS NOT NULL AND gh_node_id != ?1
-           AND topic_id = (SELECT id FROM topics WHERE gh_node_id = ?1)${present.length ? ` AND gh_node_id NOT IN (${marks})` : ""}`,
-      ).bind(discussionNode, nowIso, ...present),
-      o.db.prepare(
-        `UPDATE topics SET
-           reply_count = MAX(0, (SELECT COUNT(*) FROM posts p WHERE p.topic_id = topics.id AND p.status = 'visible') - 1),
-           last_post_at = COALESCE((SELECT MAX(p.created_at) FROM posts p WHERE p.topic_id = topics.id AND p.status = 'visible'), topics.created_at)
-         WHERE gh_node_id = ?1`,
-      ).bind(discussionNode),
-    ];
+  // A stored comment the complete listing no longer shows is gone. The ids are compared here
+  // and removed in small groups: one statement may carry at most 100 bound parameters.
+  async function goneComments(discussionNode: string, present: string[]): Promise<Stmt[]> {
+    const kept = new Set(present);
+    const stored = await o.db.prepare(
+      `SELECT p.gh_node_id AS node FROM posts p JOIN topics t ON t.id = p.topic_id
+        WHERE t.gh_node_id = ?1 AND p.source = 'github' AND p.gh_deleted_at IS NULL AND p.gh_node_id IS NOT NULL AND p.gh_node_id != ?1`,
+    ).bind(discussionNode).all<{ node: string }>();
+    const gone = (stored.results ?? []).map((r) => r.node).filter((n) => !kept.has(n));
+    if (gone.length === 0) return [];
+    const out: Stmt[] = [];
+    for (let i = 0; i < gone.length; i += 50) {
+      const chunk = gone.slice(i, i + 50);
+      const marks = chunk.map((_, k) => `?${k + 2}`).join(", ");
+      out.push(o.db.prepare(
+        `UPDATE posts SET status = 'deleted', body = '', gh_deleted_at = COALESCE(gh_deleted_at, ?1) WHERE gh_deleted_at IS NULL AND gh_node_id IN (${marks})`,
+      ).bind(nowIso, ...chunk));
+    }
+    out.push(o.db.prepare(
+      `UPDATE topics SET
+         reply_count = MAX(0, (SELECT COUNT(*) FROM posts p WHERE p.topic_id = topics.id AND p.status = 'visible') - 1),
+         last_post_at = COALESCE((SELECT MAX(p.created_at) FROM posts p WHERE p.topic_id = topics.id AND p.status = 'visible'), topics.created_at)
+       WHERE gh_node_id = ?1`,
+    ).bind(discussionNode));
+    return out;
   }
 
   // The listing cannot show a deletion, so the recent mirrored topics are asked for

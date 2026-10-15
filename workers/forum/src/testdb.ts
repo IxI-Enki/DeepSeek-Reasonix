@@ -10,6 +10,9 @@ interface Sqlite {
 class Statement {
   constructor(private readonly db: Sqlite, readonly sql: string, private readonly params: unknown[] = []) {}
   bind(...params: unknown[]) {
+    // D1 refuses more than 100 bound parameters in one statement; SQLite itself allows far more,
+    // so without this a query that fails in production passes here.
+    if (params.length > 100) throw new Error(`D1_ERROR: too many SQL variables (${params.length} bound, 100 allowed)`);
     return new Statement(this.db, this.sql, params);
   }
   async first<T>(): Promise<T | null> {
