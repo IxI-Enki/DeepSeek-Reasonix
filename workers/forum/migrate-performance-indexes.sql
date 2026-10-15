@@ -16,3 +16,6 @@ CREATE INDEX IF NOT EXISTS topics_visible_latest
 CREATE INDEX IF NOT EXISTS topics_visible_top
   ON topics (reply_count DESC, last_post_at DESC)
   WHERE status <> 'hidden';
+
+CREATE INDEX IF NOT EXISTS topics_author_created_at
+  ON topics (author, created_at DESC);
