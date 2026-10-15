@@ -26,6 +26,9 @@ provider credentials: those remain under `REASONIX_HOME`. If an older build wrot
 provider keys to `REASONIX_STATE_HOME/.env`, Reasonix imports those keys
 non-destructively when `<Reasonix home>/.env` is missing them.
 
+Config-edit locks live under `<isolated home>/locks/` when `REASONIX_STATE_HOME` or
+`REASONIX_HOME` is set explicitly, otherwise under `~/.reasonix/locks/`.
+
 ## What Lives There
 
 | Data | Path |

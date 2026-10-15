@@ -411,7 +411,6 @@ func TestConfigEditLockCanonicalizesAliasesAndIgnoresCacheOverrides(t *testing.T
 		t.Fatalf("cache override split config lock: %q != %q", first, second)
 	}
 	t.Setenv("HOME", filepath.Join(dir, "isolated-home"))
-	t.Setenv("REASONIX_HOME", filepath.Join(dir, "reasonix-home"))
 	t.Setenv("TMPDIR", filepath.Join(dir, "tmp-a"))
 	third, err := configFileEditLockPath(link)
 	if err != nil {
@@ -631,5 +630,24 @@ func TestConfigEditLockRegistryDirIsUnderUserHome(t *testing.T) {
 	}
 	if strings.HasPrefix(dir, string(filepath.Separator)+"tmp"+string(filepath.Separator)) {
 		t.Fatalf("lock dir %q is in shared /tmp", dir)
+	}
+}
+
+// An explicitly isolated home owns its own lock registry: a run that pinned
+// REASONIX_HOME or REASONIX_STATE_HOME must not write to the account's default
+// home, which may be read-only to it or hold another install's state.
+func TestConfigEditLocksStayInsideAnIsolatedHome(t *testing.T) {
+	for _, env := range []string{"REASONIX_HOME", "REASONIX_STATE_HOME"} {
+		t.Run(env, func(t *testing.T) {
+			isolated := testenv.TempDir(t)
+			t.Setenv(env, isolated)
+			dir, err := configEditLockRegistryDir()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if rel, err := filepath.Rel(isolated, dir); err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+				t.Fatalf("the lock registry %q is outside the isolated home %q", dir, isolated)
+			}
+		})
 	}
 }

@@ -1,6 +1,7 @@
 package config
 
 import (
+	"cmp"
 	"context"
 	"crypto/sha256"
 	"errors"
@@ -290,6 +291,9 @@ func configEditLockRegistryDir() (string, error) {
 		return "", fmt.Errorf("lock config edits: OS user identity unavailable")
 	}
 	digest := sha256.Sum256([]byte(identity))
+	if isolated := cmp.Or(IsolatedStateDir(), IsolatedHomeDir()); isolated != "" {
+		return filepath.Join(isolated, "locks", fmt.Sprintf("config-edits-%x", digest[:8])), nil
+	}
 	// Per-user home from the account database, not $HOME or TMPDIR; a shared
 	// /tmp path let another identity pre-create it. The owner check backs this up.
 	home := strings.TrimSpace(current.HomeDir)
