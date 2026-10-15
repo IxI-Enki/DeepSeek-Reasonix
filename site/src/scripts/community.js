@@ -4,6 +4,7 @@
 // shared `reasonix-lang` choice toggles; plain-text strings pick the current lang.
 import { initTheme } from "./theme.js";
 import { initMobileNav } from "./mobile-nav.js";
+import { mirrorOf, statusText } from "../lib/forum-mirror.mjs";
 
 const FORUM = (import.meta.env.PUBLIC_FORUM_API || "https://forum.reasonix.io").replace(/\/$/, "");
 const ACCOUNTS = (import.meta.env.PUBLIC_ACCOUNTS_API || "https://id.reasonix.io").replace(/\/$/, "");
@@ -64,8 +65,15 @@ const ERR = {
   rate_limited: ["You're posting too fast — take a short break.", "发帖太快了——稍微歇一会儿。"],
   daily_limit: ["You've hit today's posting limit for your trust level.", "你已达到当前信任等级的每日发帖上限。"],
   closed: ["This topic is closed to new replies.", "该话题已关闭，不能再回复。"],
+  read_only_mirror: ["This thread is mirrored from GitHub Discussions — reply there.", "这个话题同步自 GitHub Discussions，请在 GitHub 上回复。"],
   self_flag: ["You can't report your own post.", "不能举报自己的帖子。"],
   unauthorized: ["Sign in to continue.", "请先登录。"],
+};
+const mirrorBadges = (topic) => {
+  const m = mirrorOf(topic);
+  if (!m) return "";
+  const st = statusText(m);
+  return `<span class="badge gh">GitHub</span>${st ? ` <span class="badge solved">${L(st[0], st[1])}</span>` : ""}`;
 };
 const errText = (err) => (ERR[err.code] ? t(ERR[err.code][0], ERR[err.code][1]) : err.message);
 
@@ -167,6 +175,7 @@ function renderHome() {
             <div class="title">
               ${tp.pinned ? `<span class="badge pinned">📌 ${L("Pinned", "置顶")}</span>` : ""}
               ${tp.status === "solved" ? `<span class="badge solved">✓ ${L("Solved", "已解决")}</span>` : ""}
+              ${mirrorBadges(tp)}
               <a href="/community/topic/?id=${tp.id}">${esc(tp.title)}</a>
             </div>
             <div class="sub"><span class="cat-tag">${catName(tp.category, tp.categoryName)}</span> <span class="who">${esc(tp.author)}</span> · ${ago(tp.createdAt)}</div>
@@ -224,6 +233,7 @@ async function renderThread() {
   el("t-title").textContent = topic.title;
   el("t-meta").innerHTML =
     `${topic.status === "solved" ? `<span class="badge solved">✓ ${L("Solved", "已解决")}</span>` : ""}
+     ${mirrorBadges(topic)}
      <span>${topic.replyCount} ${L("replies", "回复")} · ${topic.viewCount} ${L("views", "浏览")} · ${L("started", "发起于")} ${ago(topic.createdAt)}</span>`;
   const renderPosts = () => {
     const more = pageInfo?.hasMore
@@ -282,6 +292,11 @@ async function renderThread() {
   });
 
   const zone = el("reply-zone");
+  const mirror = mirrorOf(topic);
+  if (mirror) {
+    zone.innerHTML = `<div class="composer"><div class="gate"><p>${L("This thread is mirrored from GitHub Discussions. Join the conversation there.", "这个话题同步自 GitHub Discussions，请到 GitHub 上参与讨论。")}</p><a class="btn btn-primary" href="${esc(mirror.url)}" rel="noopener">${L("Open on GitHub", "在 GitHub 上打开")}</a></div></div>`;
+    return;
+  }
   if (!account) {
     zone.innerHTML = `<div class="composer"><div class="gate"><p>${L("Sign in with your Reasonix account to reply.", "用你的 Reasonix 账号登录后回复。")}</p><a class="btn btn-primary" href="${loginUrl()}">${L("Sign in", "登录")}</a></div></div>`;
     return;
