@@ -24,7 +24,7 @@ import {
 } from "../config";
 import { disconnectRemote, remoteDevicePresence } from "../remoteGateway";
 import { enforceRateLimit } from "../http/d1RateLimit";
-import { mintFeedbackAssertion, notifyFeedbackErasure } from "../feedbackLink";
+import { fetchFeedbackOverview, mintFeedbackAssertion, notifyFeedbackErasure } from "../feedbackLink";
 import backups from "./backups";
 import remoteControllers from "./remoteControllers";
 import { ConfigBackupRepo } from "../db/configBackups";
@@ -41,6 +41,14 @@ me.post("/feedback-assertion", async (c) => {
   if (!c.env.FEEDBACK_ACCOUNT_SECRET) throw new ApiError(503, "feedback_unavailable", "Feedback account linking is unavailable.");
   await enforceRateLimit(c.env, { name: "feedback-assertion", limit: 30, windowMs: 60_000 }, String(user.id));
   return c.json(await mintFeedbackAssertion(c.env.FEEDBACK_ACCOUNT_SECRET, user.id, new Date()));
+});
+
+me.get("/feedback", async (c) => {
+  const user = currentUser(c);
+  await enforceRateLimit(c.env, { name: "feedback-overview", limit: 60, windowMs: 60_000 }, String(user.id));
+  const overview = await fetchFeedbackOverview(c.env, user.id);
+  if (overview === "unavailable") throw new ApiError(503, "feedback_unavailable", "Feedback standing is unavailable right now.");
+  return c.json(overview);
 });
 
 me.route("/backups", backups);

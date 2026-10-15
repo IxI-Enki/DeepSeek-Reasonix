@@ -83,3 +83,72 @@ export async function retryFeedbackErasures(env: Bindings, now = new Date()): Pr
   }
   return settled;
 }
+
+const OVERVIEW_TIMEOUT_MS = 5000;
+const OVERVIEW_ITEMS = 10;
+const TRUST_STATES = new Set(["active", "legacy_active", "lapsed", "revoked", "none"]);
+
+const count = (v: unknown): number | null => (Number.isInteger(v) && (v as number) >= 0 ? (v as number) : null);
+const text = (v: unknown, max: number): string | null => (typeof v === "string" && v.length > 0 ? v.slice(0, max) : null);
+
+function standing(raw: unknown) {
+  const p = (raw ?? {}) as Record<string, unknown>;
+  const limits = (p.effectiveLimits ?? {}) as Record<string, unknown>;
+  const level = count(p.level);
+  const adoptedCount = count(p.adoptedCount);
+  if (level === null || adoptedCount === null || typeof p.trustState !== "string" || !TRUST_STATES.has(p.trustState)) return null;
+  return {
+    level,
+    adoptedCount,
+    currentThreshold: count(p.currentThreshold),
+    nextLevel: count(p.nextLevel),
+    nextThreshold: count(p.nextThreshold),
+    remaining: count(p.remaining),
+    trustState: p.trustState,
+    trustExpiresAt: text(p.trustExpiresAt, 40),
+    effectiveLimits: { reportsPerHour: count(limits.reportsPerHour), reportsPerDay: count(limits.reportsPerDay), repliesPerHour: count(limits.repliesPerHour) },
+  };
+}
+
+export type FeedbackOverview = "unavailable" | { profile: ReturnType<typeof standing> & { scope: string } | null; installs: { id: string; linkedAt: string; profile: ReturnType<typeof standing> }[]; items: Record<string, unknown>[] };
+
+// The account's feedback standing and recent reports, read from the feedback worker
+// with a fresh assertion. Only a whitelist of fields is passed on, so the page gets
+// no install hash and no reply bodies whatever the worker adds later.
+export async function fetchFeedbackOverview(env: Bindings, userId: number, now = new Date()): Promise<FeedbackOverview> {
+  if (!env.FEEDBACK_ACCOUNT_SECRET) return "unavailable";
+  const { assertion } = await mintFeedbackAssertion(env.FEEDBACK_ACCOUNT_SECRET, userId, now);
+  let res: Response;
+  try {
+    res = await fetch(`${(env.FEEDBACK_ORIGIN ?? DEFAULT_FEEDBACK_ORIGIN).replace(/\/+$/, "")}/v1/feedback/account/mine`, {
+      headers: { "x-account-assertion": assertion, accept: "application/json" },
+      redirect: "manual",
+      signal: AbortSignal.timeout(OVERVIEW_TIMEOUT_MS),
+    });
+  } catch {
+    return "unavailable";
+  }
+  if (!res.ok) return "unavailable";
+  const body = (await res.json().catch(() => null)) as { profile?: Record<string, unknown>; installs?: Record<string, unknown>[]; items?: Record<string, unknown>[] } | null;
+  if (!body || !Array.isArray(body.installs) || !Array.isArray(body.items)) return "unavailable";
+  const headline = standing(body.profile);
+  return {
+    profile: headline ? { ...headline, scope: body.profile?.scope === "install" ? "install" : "best_install" } : null,
+    installs: body.installs.flatMap((i) => {
+      const id = typeof i.id === "string" && /^[0-9a-f]{12}$/.test(i.id) ? i.id : null;
+      const linkedAt = text(i.linkedAt, 40);
+      return id && linkedAt ? [{ id, linkedAt, profile: standing(i.profile) }] : [];
+    }),
+    items: body.items.slice(0, OVERVIEW_ITEMS).map((it) => ({
+      receipt: text(it.receipt, 20),
+      category: text(it.category, 20),
+      titleSnippet: text(it.titleSnippet, 80),
+      status: text(it.status, 20),
+      issueNumber: count(it.issueNumber),
+      issueUrl: typeof it.issueUrl === "string" && it.issueUrl.startsWith("https://github.com/") ? it.issueUrl : null,
+      resolvedVersion: text(it.resolvedVersion, 32),
+      createdAt: text(it.createdAt, 40),
+      updatedAt: text(it.updatedAt, 40),
+    })),
+  };
+}
