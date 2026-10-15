@@ -28,6 +28,8 @@ export interface Env {
   FEEDBACK_ENABLED?: string;
   FEEDBACK_TOKEN_SECRET?: string;
   FEEDBACK_ADMIN_TOKEN?: string;
+  // Bearer for the read-only public feed the forum mirrors; the route is absent until it is set.
+  FEEDBACK_PUBLIC_TOKEN?: string;
   // Account link kill switch: only "true" enables the link routes, the union read
   // and sibling replies. The shared secret verifies account assertions and erasure calls.
   FEEDBACK_ACCOUNT_LINK?: string;
