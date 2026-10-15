@@ -14,6 +14,7 @@ const MAX_LIMIT = 200;
 const CURSOR = /^(\d{4}-\d{2}-\d{2}T[0-9:.]+Z)\|(\d{1,12})$/;
 const ISSUE_URL = /^https:\/\/github\.com\/esengine\/DeepSeek-Reasonix\/issues\/\d+$/;
 const TITLE_CHARS = 120;
+const IMAGE_LOOKUP_CHUNK = 50;
 
 interface PublicRow {
   id: number;
@@ -83,11 +84,14 @@ export async function handlePublicFeed(request: Request, env: Env, url: URL): Pr
 // Only an image a maintainer released is public; a takedown removes its row.
 async function publicImages(env: Env, receipts: string[]): Promise<Map<string, string[]>> {
   const out = new Map<string, string[]>();
-  if (receipts.length === 0) return out;
-  const marks = receipts.map(() => "?").join(",");
-  const { results } = await env.DB.prepare(`SELECT receipt, key FROM feedback_public_images WHERE receipt IN (${marks}) ORDER BY created_at, key`)
-    .bind(...receipts)
-    .all<{ receipt: string; key: string }>();
-  for (const r of results) out.set(r.receipt, [...(out.get(r.receipt) ?? []), r.key]);
+  // D1 refuses more than 100 bound parameters in one statement and a page can hold 200 reports.
+  for (let at = 0; at < receipts.length; at += IMAGE_LOOKUP_CHUNK) {
+    const part = receipts.slice(at, at + IMAGE_LOOKUP_CHUNK);
+    const marks = part.map(() => "?").join(",");
+    const { results } = await env.DB.prepare(`SELECT receipt, key FROM feedback_public_images WHERE receipt IN (${marks}) ORDER BY created_at, key`)
+      .bind(...part)
+      .all<{ receipt: string; key: string }>();
+    for (const r of results) out.set(r.receipt, [...(out.get(r.receipt) ?? []), r.key]);
+  }
   return out;
 }
