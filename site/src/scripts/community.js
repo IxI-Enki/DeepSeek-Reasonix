@@ -73,7 +73,8 @@ const mirrorBadges = (topic) => {
   const m = mirrorOf(topic);
   if (!m) return "";
   const st = statusText(m);
-  return `<span class="badge gh">GitHub</span>${st ? ` <span class="badge solved">${L(st[0], st[1])}</span>` : ""}`;
+  const origin = m.feedback ? `<span class="badge fb">${L("Feedback", "反馈")}</span>` : `<span class="badge gh">GitHub</span>`;
+  return `${origin}${st ? ` <span class="badge solved">${L(st[0], st[1])}</span>` : ""}`;
 };
 const errText = (err) => (ERR[err.code] ? t(ERR[err.code][0], ERR[err.code][1]) : err.message);
 
@@ -130,7 +131,6 @@ function md(body) {
   return out || "<p></p>";
 }
 
-const CAT_ICONS = { announcements: "📣", help: "🛟", skills: "🧩", show: "✨", feedback: "💡" };
 const loginUrl = () => `/login/?next=${encodeURIComponent(location.pathname + location.search)}`;
 
 let account = null;
@@ -144,55 +144,84 @@ async function loadAccount() {
 }
 
 /* ── home ─────────────────────────────────────────── */
+const CAT_DOTS = { announcements: "warm", help: "accent", skills: "violet", show: "rose", feedback: "ok" };
+const dot = (slug) => `<i class="dot" data-cat="${esc(CAT_DOTS[slug] || "")}"></i>`;
+
 function renderHome() {
   const catBox = el("cat-list");
   const topicBox = el("topic-list");
   const category = qp.get("category") || "";
+  let sort = "latest";
+  let topics = [];
+  let cats = [];
 
-  forum("/categories").then((d) => {
-    const cats = d.categories;
-    if (el("s-cats")) el("s-cats").textContent = cats.length;
-    if (el("s-topics")) el("s-topics").textContent = cats.reduce((a, c) => a + (c.topicCount || 0), 0);
-    catBox.innerHTML = cats.map((c) => `
-      <a class="cat" href="/community/?category=${esc(c.slug)}">
-        <span class="ico">${CAT_ICONS[c.slug] || "💬"}</span>
-        <div><h3>${catName(c.slug, c.name)}</h3><p>${CATDESC[c.slug] ? L(CATDESC[c.slug][0], CATDESC[c.slug][1]) : esc(c.description)}</p>
-        <div class="meta">${c.topicCount || 0} ${L("topics", "话题")}${c.lastActivity ? " · " + ago(c.lastActivity) : ""}</div></div>
-      </a>`).join("");
-  }).catch(() => { catBox.innerHTML = `<div class="empty">${L("Couldn't load categories.", "无法加载分区。")}</div>`; });
+  const heading = () => {
+    const c = cats.find((x) => x.slug === category);
+    el("f-title").innerHTML = c ? catName(c.slug, c.name) : L("All topics", "全部话题");
+    el("f-desc").innerHTML = c ? (CATDESC[c.slug] ? L(CATDESC[c.slug][0], CATDESC[c.slug][1]) : esc(c.description)) : "";
+  };
+  const paintCats = () => {
+    const total = cats.reduce((a, c) => a + (c.topicCount || 0), 0);
+    el("s-cats").textContent = cats.length;
+    el("s-topics").textContent = total;
+    catBox.innerHTML = `<a class="fcat${category ? "" : " on"}" href="/community/"><i class="dot" data-cat=""></i><span class="nm">${L("All topics", "全部话题")}</span><span class="ct">${total}</span></a>`
+      + cats.map((c) => `<a class="fcat${c.slug === category ? " on" : ""}" href="/community/?category=${esc(c.slug)}">${dot(c.slug)}<span class="nm">${catName(c.slug, c.name)}</span><span class="ct">${c.topicCount || 0}</span></a>`).join("");
+    heading();
+  };
 
-  const loadTopics = (sort) => {
+  const row = (tp) => `
+    <div class="frow${tp.pinned ? " pin" : ""}" role="row">
+      <div class="ftopic" role="cell">
+        <div class="ft">
+          ${tp.pinned ? `<span class="badge pinned">📌 ${L("Pinned", "置顶")}</span>` : ""}
+          ${tp.status === "solved" ? `<span class="badge solved">✓ ${L("Solved", "已解决")}</span>` : ""}
+          ${tp.status === "closed" ? `<span class="badge gh">${L("Closed", "已关闭")}</span>` : ""}
+          ${mirrorBadges(tp)}
+          <a href="/community/topic/?id=${tp.id}">${esc(tp.title)}</a>
+        </div>
+        <div class="fsub">${dot(tp.category)}<a class="fcatname" href="/community/?category=${esc(tp.category)}">${catName(tp.category, tp.categoryName)}</a><span class="who">${avatar(tp.author, "sm")}${esc(tp.author)}</span></div>
+      </div>
+      <span class="num" role="cell" data-l="${t("Replies", "回复")}">${tp.replyCount}</span>
+      <span class="num" role="cell" data-l="${t("Views", "浏览")}">${tp.viewCount ?? 0}</span>
+      <span class="act" role="cell" title="${esc(tp.lastPostAt || "")}">${ago(tp.lastPostAt)}</span>
+    </div>`;
+
+  const paintTopics = () => {
+    const needle = (el("t-search")?.value || "").trim().toLowerCase();
+    let list = topics;
+    if (sort === "unanswered") list = list.filter((tp) => !tp.replyCount && tp.status !== "closed");
+    if (needle) list = list.filter((tp) => String(tp.title).toLowerCase().includes(needle));
+    if (!list.length) {
+      topicBox.innerHTML = needle || sort === "unanswered"
+        ? `<div class="empty">${L("Nothing matches.", "没有符合条件的话题。")}</div>`
+        : `<div class="empty">${L("No topics yet —", "还没有话题 ——")} <a class="tag" href="/community/new/">${L("start the first one", "来发第一个")}</a>.</div>`;
+      return;
+    }
+    topicBox.innerHTML = list.map(row).join("");
+  };
+
+  forum("/categories").then((d) => { cats = d.categories; paintCats(); })
+    .catch(() => { catBox.innerHTML = `<div class="empty">${L("Couldn't load categories.", "无法加载分区。")}</div>`; });
+
+  const loadTopics = () => {
     topicBox.innerHTML = `<div class="skeleton"><div class="bar"></div><div class="bar short"></div></div>`.repeat(3);
     const q = new URLSearchParams();
     if (category) q.set("category", category);
-    if (sort) q.set("sort", sort);
-    forum("/topics?" + q).then((d) => {
-      if (!d.topics.length) { topicBox.innerHTML = `<div class="empty">${L("No topics yet —", "还没有话题 ——")} <a class="tag" href="/community/new/">${L("start the first one", "来发第一个")}</a>.</div>`; return; }
-      topicBox.innerHTML = d.topics.map((tp) => `
-        <div class="topic">
-          ${avatar(tp.author)}
-          <div class="main">
-            <div class="title">
-              ${tp.pinned ? `<span class="badge pinned">📌 ${L("Pinned", "置顶")}</span>` : ""}
-              ${tp.status === "solved" ? `<span class="badge solved">✓ ${L("Solved", "已解决")}</span>` : ""}
-              ${mirrorBadges(tp)}
-              <a href="/community/topic/?id=${tp.id}">${esc(tp.title)}</a>
-            </div>
-            <div class="sub"><span class="cat-tag">${catName(tp.category, tp.categoryName)}</span> <span class="who">${esc(tp.author)}</span> · ${ago(tp.createdAt)}</div>
-          </div>
-          <div class="stat"><div class="n">${tp.replyCount}</div><div class="l">${L("replies", "回复")}</div></div>
-          <div class="last">${ago(tp.lastPostAt)}</div>
-        </div>`).join("");
-    }).catch(() => { topicBox.innerHTML = `<div class="empty">${L("Couldn't load discussions.", "无法加载讨论。")}</div>`; });
+    if (sort === "top") q.set("sort", "top");
+    forum("/topics?" + q).then((d) => { topics = d.topics; paintTopics(); })
+      .catch(() => { topicBox.innerHTML = `<div class="empty">${L("Couldn't load discussions.", "无法加载讨论。")}</div>`; });
   };
-  loadTopics("latest");
+  loadTopics();
 
   el("sort-tabs")?.addEventListener("click", (e) => {
     const b = e.target.closest("button[data-sort]");
     if (!b) return;
     el("sort-tabs").querySelectorAll("button").forEach((x) => x.classList.toggle("on", x === b));
-    loadTopics(b.dataset.sort);
+    const refetch = (b.dataset.sort === "top") !== (sort === "top");
+    sort = b.dataset.sort;
+    if (refetch) loadTopics(); else paintTopics();
   });
+  el("t-search")?.addEventListener("input", paintTopics);
 }
 
 /* ── thread ───────────────────────────────────────── */
@@ -294,7 +323,7 @@ async function renderThread() {
   const zone = el("reply-zone");
   const mirror = mirrorOf(topic);
   if (mirror) {
-    zone.innerHTML = `<div class="composer"><div class="gate"><p>${L("This thread is mirrored from GitHub Discussions. Join the conversation there.", "这个话题同步自 GitHub Discussions，请到 GitHub 上参与讨论。")}</p><a class="btn btn-primary" href="${esc(mirror.url)}" rel="noopener">${L("Open on GitHub", "在 GitHub 上打开")}</a></div></div>`;
+    zone.innerHTML = `<div class="composer"><div class="gate"><p>${mirror.feedback ? L("This thread mirrors an in-app report. Follow it on GitHub.", "这个话题同步自应用内反馈，请到 GitHub 上跟进。") : L("This thread is mirrored from GitHub Discussions. Join the conversation there.", "这个话题同步自 GitHub Discussions，请到 GitHub 上参与讨论。")}</p><a class="btn btn-primary" href="${esc(mirror.url)}" rel="noopener">${L("Open on GitHub", "在 GitHub 上打开")}</a></div></div>`;
     return;
   }
   if (!account) {

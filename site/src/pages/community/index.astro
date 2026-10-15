@@ -3,66 +3,51 @@ import Community from "../../layouts/Community.astro";
 import { QQ_GROUP, DISCORD_URL, DOUYIN } from "../../lib/community-links.mjs";
 ---
 <Community title="Reasonix Community" description="Ask questions, share skills, and shape a DeepSeek-native agent." active="discussions">
-  <section class="head">
-    <div class="wrap">
-      <div class="row">
-        <div>
-          <div class="eyebrow"><span class="l-en">Reasonix Community</span><span class="l-zh">Reasonix 社区</span></div>
-          <h1><span class="l-en">Discussions</span><span class="l-zh">讨论区</span></h1>
-          <p><span class="l-en">Ask questions, share skills, and shape a DeepSeek-native agent — with the makers and other builders.</span><span class="l-zh">提问、分享技能、一起打磨这个 DeepSeek 原生 Agent —— 和作者及其他构建者。</span></p>
-        </div>
-        <a class="btn btn-primary" href="/community/new/"><span class="l-en">✎ New topic</span><span class="l-zh">✎ 发起话题</span></a>
-      </div>
-    </div>
-  </section>
-
-  <div class="wrap layout">
-    <div>
-      <div class="sec-title"><h2><span class="l-en">Categories</span><span class="l-zh">分区</span></h2></div>
-      <div class="cats" id="cat-list">
-        <div class="cat"><span class="ico">·</span><div><h3><span class="l-en">Loading…</span><span class="l-zh">加载中…</span></h3></div></div>
-      </div>
-
-      <div class="sec-title">
-        <div class="tabs" id="sort-tabs">
-          <button class="on" data-sort="latest"><span class="l-en">Latest</span><span class="l-zh">最新</span></button>
-          <button data-sort="top"><span class="l-en">Top</span><span class="l-zh">热门</span></button>
-        </div>
-      </div>
-      <div class="topics" id="topic-list">
-        <div class="skeleton"><div class="bar"></div><div class="bar short"></div></div>
-        <div class="skeleton"><div class="bar"></div><div class="bar short"></div></div>
-        <div class="skeleton"><div class="bar"></div><div class="bar short"></div></div>
-      </div>
-    </div>
-
-    <aside class="side">
-      <div class="card cta">
-        <h4><span class="l-en">Start a discussion</span><span class="l-zh">发起讨论</span></h4>
-        <p class="lead"><span class="l-en">Ask a question or share what you built.</span><span class="l-zh">提个问题，或分享你做的东西。</span></p>
-        <a class="btn btn-primary" href="/community/new/"><span class="l-en">✎ New topic</span><span class="l-zh">✎ 发起话题</span></a>
-      </div>
-      <div class="card">
-        <h4 style="margin-bottom:14px"><span class="l-en">Community</span><span class="l-zh">社区</span></h4>
-        <div class="stats-grid" id="stats">
-          <div class="stat-box"><div class="n" id="s-topics">—</div><div class="l"><span class="l-en">topics</span><span class="l-zh">话题</span></div></div>
-          <div class="stat-box"><div class="n" id="s-cats">—</div><div class="l"><span class="l-en">categories</span><span class="l-zh">分区</span></div></div>
-        </div>
-      </div>
-      <div class="card">
-        <h4 style="margin-bottom:14px"><span class="l-en">Guidelines</span><span class="l-zh">社区规范</span></h4>
-        <p class="lead"><span class="l-en">Be kind, search first, and keep code in fenced blocks. New accounts unlock links and more as they participate.</span><span class="l-zh">友善、先搜索、代码放进围栏块。新账号随参与逐步解锁发链接等权限。</span></p>
-        <a class="btn btn-ghost sm" href="/community/guidelines/"><span class="l-en">Read the guidelines</span><span class="l-zh">阅读规范</span></a>
-      </div>
-      <div class="card">
-        <h4 style="margin-bottom:14px"><span class="l-en">Join the community</span><span class="l-zh">加入社区</span></h4>
-        <p class="lead"><span class="l-en">QQ group</span><span class="l-zh">QQ 群</span> {QQ_GROUP.name} · <code>{QQ_GROUP.number}</code></p>
-        <p style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
-          <a class="btn btn-ghost sm" href={QQ_GROUP.joinUrl} target="_blank" rel="noreferrer"><span class="l-en">Join QQ group</span><span class="l-zh">加入 QQ 群</span></a>
-          <a class="btn btn-ghost sm" href={DISCORD_URL} target="_blank" rel="noreferrer">Discord</a>
-        </p>
-        <p style="margin-top:12px;font-size:12.5px;color:var(--ink-3)"><span class="l-en">Douyin</span><span class="l-zh">抖音</span> {DOUYIN.name} · <code>{DOUYIN.id}</code></p>
-      </div>
+  <div class="wrap forum">
+    <aside class="fnav" aria-label="Forum navigation">
+      <a class="btn btn-primary fnew" href="/community/new/"><span class="l-en">✎ New topic</span><span class="l-zh">✎ 发起话题</span></a>
+      <nav class="fmenu" id="sort-tabs" aria-label="Topic lists">
+        <button class="on" data-sort="latest"><span class="l-en">Latest</span><span class="l-zh">最新</span></button>
+        <button data-sort="top"><span class="l-en">Top</span><span class="l-zh">热门</span></button>
+        <button data-sort="unanswered"><span class="l-en">Unanswered</span><span class="l-zh">未回复</span></button>
+      </nav>
+      <h5 class="fh"><span class="l-en">Categories</span><span class="l-zh">分区</span></h5>
+      <nav class="fcats" id="cat-list" aria-label="Categories">
+        <a class="fcat" href="/community/"><i class="dot" data-cat=""></i><span class="nm"><span class="l-en">Loading…</span><span class="l-zh">加载中…</span></span></a>
+      </nav>
+      <h5 class="fh"><span class="l-en">Community</span><span class="l-zh">社区</span></h5>
+      <nav class="flinks">
+        <a href="/community/guidelines/"><span class="l-en">Guidelines</span><span class="l-zh">社区规范</span></a>
+        <a href={QQ_GROUP.joinUrl} target="_blank" rel="noreferrer"><span class="l-en">QQ group</span><span class="l-zh">QQ 群</span> <code>{QQ_GROUP.number}</code></a>
+        <a href={DISCORD_URL} target="_blank" rel="noreferrer">Discord</a>
+        <a href="/docs/"><span class="l-en">Documentation ↗</span><span class="l-zh">文档 ↗</span></a>
+      </nav>
+      <p class="fstat"><span id="s-topics">—</span> <span class="l-en">topics</span><span class="l-zh">话题</span> · <span id="s-cats">—</span> <span class="l-en">categories</span><span class="l-zh">分区</span></p>
     </aside>
+
+    <main class="fmain">
+      <div class="fbar">
+        <div class="ftitle">
+          <h1 id="f-title"><span class="l-en">All topics</span><span class="l-zh">全部话题</span></h1>
+          <p id="f-desc"></p>
+        </div>
+        <label class="fsearch"><span class="l-en sr">Filter topics</span><span class="l-zh sr">筛选话题</span>
+          <input id="t-search" type="search" autocomplete="off" placeholder="Filter topics…" data-ph-zh="筛选话题…" />
+        </label>
+      </div>
+      <div class="ftable" role="table" aria-label="Topics">
+        <div class="fhead" role="row">
+          <span role="columnheader"><span class="l-en">Topic</span><span class="l-zh">话题</span></span>
+          <span role="columnheader" class="num"><span class="l-en">Replies</span><span class="l-zh">回复</span></span>
+          <span role="columnheader" class="num"><span class="l-en">Views</span><span class="l-zh">浏览</span></span>
+          <span role="columnheader" class="act"><span class="l-en">Activity</span><span class="l-zh">活动</span></span>
+        </div>
+        <div id="topic-list" class="topics" role="rowgroup">
+          <div class="skeleton"><div class="bar"></div><div class="bar short"></div></div>
+          <div class="skeleton"><div class="bar"></div><div class="bar short"></div></div>
+          <div class="skeleton"><div class="bar"></div><div class="bar short"></div></div>
+        </div>
+      </div>
+    </main>
   </div>
 </Community>

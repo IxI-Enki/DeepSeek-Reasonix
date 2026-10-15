@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
-import { DISCUSSIONS_URL, mirrorOf, statusText } from "../lib/forum-mirror.mjs";
+import { DISCUSSIONS_URL, ISSUES_URL, mirrorOf, statusText } from "../lib/forum-mirror.mjs";
 
 test("only a github-sourced thread is a mirror, and it points at its own discussion", () => {
   assert.equal(mirrorOf({ source: "forum", ghNumber: 7 }), null);
@@ -23,4 +23,12 @@ test("the thread page replaces the reply box on a mirror, and the list marks it"
   assert.match(page, /const mirror = mirrorOf\(topic\)/);
   assert.match(page, /if \(mirror\) \{[^}]*reply-zone|if \(mirror\)[\s\S]{0,400}zone\.innerHTML/);
   assert.match(page, /read_only_mirror:/);
+});
+
+test("an in-app feedback thread mirrors its issue, not a discussion", () => {
+  const m = mirrorOf({ source: "feedback", ghNumber: 12, ghStatus: "fixed", fixedIn: "2.40.0" });
+  assert.equal(m.url, `${ISSUES_URL}/12`);
+  assert.equal(m.feedback, true);
+  assert.deepEqual(statusText(m), ["Fixed in v2.40.0", "已修复于 v2.40.0"]);
+  assert.equal(mirrorOf({ source: "feedback", ghNumber: "x" }).url, ISSUES_URL);
 });
