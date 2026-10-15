@@ -90,6 +90,17 @@ describe("the feedback mirror", () => {
     expect((await topics()).map((t) => t.ghNumber)).toEqual([13220]);
   });
 
+  it("never follows a redirect: a 3xx is no evidence, and the request says so in a form the edge runtime accepts", async () => {
+    const seen: Array<RequestInit | undefined> = [];
+    const fetchFn = (async (_url: RequestInfo | URL, init?: RequestInit) => {
+      seen.push(init);
+      return new Response(null, { status: 302, headers: { location: "https://evil.example/" } });
+    }) as typeof fetch;
+    const report = await run(fetchFn);
+    expect(report.stopped).toBeTruthy();
+    expect(seen[0]?.redirect).toBe("manual");
+  });
+
   it("treats an unexpected answer as no evidence at all", async () => {
     await run(feed([{ items: [item()], next: null }]).fetchFn);
     for (const bad of [401, 404, 502]) expect((await run(feed([bad]).fetchFn)).stopped).toBeTruthy();

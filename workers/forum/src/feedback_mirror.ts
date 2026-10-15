@@ -85,7 +85,7 @@ export async function pullFeedback(o: FeedbackMirrorOptions): Promise<FeedbackMi
       const query = new URLSearchParams({ limit: String(PAGE_LIMIT) });
       if (after) query.set("after", after);
       report.requests++;
-      const res = await fetchFn(`${o.url}?${query}`, { redirect: "error", headers: { authorization: `Bearer ${o.token}`, accept: "application/json", "user-agent": "reasonix-forum" } });
+      const res = await fetchFn(`${o.url}?${query}`, { redirect: "manual", headers: { authorization: `Bearer ${o.token}`, accept: "application/json", "user-agent": "reasonix-forum" } });
       if (!res.ok) throw new Stop(`feed ${res.status}`);
       const data = (await res.json()) as { items?: FeedItem[]; next?: string | null };
       if (!Array.isArray(data.items) || (data.next !== null && typeof data.next !== "string")) throw new Stop("unexpected answer");
