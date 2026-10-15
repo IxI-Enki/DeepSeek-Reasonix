@@ -94,8 +94,8 @@ function paintFeedback(raw) {
   if (f.state === "none") {
     $("fb-level").innerHTML = L("Not linked yet", "尚未关联");
     $("fb-note").innerHTML = L(
-      "Reports you send from Studio earn a level as they ship, from New seed up to Grove. To show it here, open Studio, then My feedback, then Account link, and link this computer.",
-      "在 Studio 里提交的反馈被采纳后会提升等级（新种 → 共林）。要在这里显示，请打开 Studio，进入「我的反馈」，在「账号关联」里关联这台电脑。",
+      "Reports you send from Studio earn a level as they ship, from New seed up to Grove. Linking a computer to your account is coming to Studio in an upcoming release; your level will show here once you link.",
+      "在 Studio 里提交的反馈被采纳后会提升等级（新种 → 共林）。把电脑关联到账号的功能将在 Studio 的后续版本提供，关联后你的等级会显示在这里。",
     );
     return;
   }
