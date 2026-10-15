@@ -287,6 +287,52 @@ describe("GET /v1/feedback/account/mine", () => {
   });
 });
 
+describe("GET /v1/feedback/account/mine standing", () => {
+  const credit = async (n: number, key: string) =>
+    db.prepare("INSERT INTO feedback_adoptions (install_hash, item_key, receipt, version, adopted_at) VALUES (?, ?, ?, 'v2.24.0', '2026-10-01T00:00:00.000Z')").run(await hashOf(n), key, `FB-CRED-${n}${key}`);
+  type Body = { profile?: { level: number; adoptedCount: number; scope: string }; installs: { id: string; current: boolean; profile: { level: number; adoptedCount: number } }[] };
+
+  it("lists every linked install with its own level and headlines the best one without an install proof", async () => {
+    await report(1);
+    await report(2);
+    await link(1, 42);
+    await link(2, 42);
+    await credit(1, "A");
+    for (const key of ["A", "B", "C"]) await credit(2, key);
+    const body = (await (await accountMine(42)).json()) as Body;
+    expect(body.installs.map((i) => i.profile.adoptedCount).sort()).toEqual([1, 3]);
+    expect(body.installs.every((i) => !i.current)).toBe(true);
+    expect(body.profile).toMatchObject({ scope: "best_install", adoptedCount: 3 });
+    expect(JSON.stringify(body)).not.toContain(await hashOf(1));
+  });
+
+  it("headlines the proven install's own standing when one is presented, never a sum", async () => {
+    await report(1);
+    await report(2);
+    await link(1, 42);
+    await link(2, 42);
+    await credit(1, "A");
+    for (const key of ["A", "B", "C"]) await credit(2, key);
+    const body = (await (await accountMine(42, 1)).json()) as Body;
+    expect(body.profile).toMatchObject({ scope: "install", adoptedCount: 1 });
+    expect(body.installs.find((i) => i.current)?.profile.adoptedCount).toBe(1);
+  });
+
+  it("states no standing for an account with no linked install", async () => {
+    const body = (await (await accountMine(99)).json()) as Body & { items: unknown[] };
+    expect(body.installs).toEqual([]);
+    expect(body.profile).toBeUndefined();
+  });
+
+  it("forgets an install's standing once it is unlinked", async () => {
+    await report(1);
+    await link(1, 42);
+    await credit(1, "A");
+    await unlink(1, 42);
+    expect(((await (await accountMine(42)).json()) as Body).installs).toEqual([]);
+  });
+});
+
 describe("replying from a linked sibling", () => {
   it("allows it, charges the calling install and uses one ownership rule", async () => {
     const receipt = await report(1);

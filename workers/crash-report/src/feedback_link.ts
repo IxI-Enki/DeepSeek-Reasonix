@@ -116,8 +116,22 @@ async function accountMine(request: Request, env: Env): Promise<Response> {
      WHERE l.account_hash = ? ORDER BY f.created_at DESC LIMIT ?`,
   ).bind(caller.accountHash, MINE_LIMIT).all<FeedbackRow>();
   const items = (await mineItems(env, results)).map((item, i) => ({ ...item, linkedHere: caller.installHash !== null && results[i].install_hash === caller.installHash }));
-  const profile = caller.installHash ? { profile: levelProfile(await installLevel(env, caller.installHash, caller.now), caller.now) } : {};
-  return jsonResponse({ ...profile, items });
+  const links = await env.DB.prepare("SELECT install_hash, linked_at FROM feedback_account_links WHERE account_hash = ? ORDER BY linked_at, install_hash LIMIT ?")
+    .bind(caller.accountHash, MAX_LINKS_PER_ACCOUNT)
+    .all<{ install_hash: string; linked_at: string }>();
+  const installs = await Promise.all(links.results.map(async (r) => ({
+    id: r.install_hash.slice(0, 12),
+    linkedAt: r.linked_at,
+    current: r.install_hash === caller.installHash,
+    profile: levelProfile(await installLevel(env, r.install_hash, caller.now), caller.now),
+  })));
+  // The headline is the proven install's own standing, or else the best of the linked
+  // ones. Levels are never summed: a second install cannot raise another's quota.
+  const own = installs.find((i) => i.current);
+  const best = installs.reduce<(typeof installs)[number] | null>((top, i) => (top === null || i.profile.adoptedCount > top.profile.adoptedCount ? i : top), null);
+  const headline = own ?? best;
+  const profile = headline ? { profile: { ...headline.profile, scope: own ? "install" : "best_install" } } : {};
+  return jsonResponse({ ...profile, installs, items });
 }
 
 // Called by the accounts worker when an account is deleted. The signature covers

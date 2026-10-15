@@ -249,3 +249,66 @@ describe("erasure call on account deletion", () => {
     );
   });
 });
+
+describe("GET /me/feedback", () => {
+  const upstream = (body: unknown, status = 200) => vi.fn(async () => Response.json(body, { status }));
+  const stand = (level: number, adopted: number) => ({
+    level, adoptedCount: adopted, currentThreshold: 3, nextLevel: level + 1, nextThreshold: 6, remaining: 2,
+    trustState: "active", trustExpiresAt: "2026-11-01T00:00:00Z", observedAt: "x", installHash: "leak",
+    effectiveLimits: { reportsPerHour: 6, reportsPerDay: 20, repliesPerHour: 5 },
+  });
+
+  it("asks the feedback worker with a fresh assertion and passes on a whitelist only", async () => {
+    const fetchMock = upstream({
+      profile: { ...stand(2, 4), scope: "best_install" },
+      installs: [{ id: "0123456789ab", linkedAt: "2026-10-01T00:00:00Z", current: true, installHash: "leak", profile: stand(2, 4) }],
+      items: [{ receipt: "FB-AAAA-0001", category: "bug", titleSnippet: "x", status: "fixed", issueNumber: 7, issueUrl: "https://github.com/e/r/issues/7", resolvedVersion: "v2.1.0", createdAt: "a", updatedAt: "b", replies: [{ body: "private" }], underReview: true }],
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const world = new World({ bindings: { FEEDBACK_ACCOUNT_SECRET: SECRET } });
+    const account = await world.addAccount();
+    const res = await world.call("GET", "/me/feedback", { cookie: account.cookie });
+    expect(res.status).toBe(200);
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toContain("/v1/feedback/account/mine");
+    expect(decode((init.headers as Record<string, string>)["x-account-assertion"] ?? "").sub).toBe(String(account.id));
+    expect(res.body.profile).toMatchObject({ level: 2, scope: "best_install" });
+    expect(res.body.installs).toHaveLength(1);
+    const wire = JSON.stringify(res.body);
+    for (const leaked of ["leak", "private", "underReview", "observedAt", "\"current\""]) expect(wire).not.toContain(leaked);
+  });
+
+  it("does not follow a redirect: the call asks for manual handling and a 302 reads as unavailable", async () => {
+    const fetchMock = vi.fn(async () => new Response(null, { status: 302, headers: { location: "https://elsewhere.example/" } }));
+    vi.stubGlobal("fetch", fetchMock);
+    const world = new World({ bindings: { FEEDBACK_ACCOUNT_SECRET: SECRET } });
+    const account = await world.addAccount();
+    const res = await world.call("GET", "/me/feedback", { cookie: account.cookie });
+    expect(res.status).toBe(503);
+    expect((fetchMock.mock.calls[0] as unknown as [string, RequestInit])[1].redirect).toBe("manual");
+  });
+
+  it("refuses without a session and answers 503 while the feedback worker or the secret is down", async () => {
+    const world = new World({ bindings: { FEEDBACK_ACCOUNT_SECRET: SECRET } });
+    expect((await world.call("GET", "/me/feedback")).status).toBe(401);
+    const account = await world.addAccount();
+    vi.stubGlobal("fetch", upstream({ error: { code: "x" } }, 500));
+    const down = await world.call("GET", "/me/feedback", { cookie: account.cookie });
+    expect(down.status).toBe(503);
+    expect(down.body.error.code).toBe("feedback_unavailable");
+    vi.stubGlobal("fetch", vi.fn(async () => { throw new Error("offline"); }));
+    expect((await world.call("GET", "/me/feedback", { cookie: account.cookie })).status).toBe(503);
+    const unset = new World();
+    const other = await unset.addAccount();
+    expect((await unset.call("GET", "/me/feedback", { cookie: other.cookie })).status).toBe(503);
+  });
+
+  it("drops an install id or a link that is not well formed", async () => {
+    vi.stubGlobal("fetch", upstream({ installs: [{ id: "nope", linkedAt: "x", profile: stand(1, 1) }, { id: "0123456789ab", linkedAt: "y", profile: { level: "x" } }], items: [] }));
+    const world = new World({ bindings: { FEEDBACK_ACCOUNT_SECRET: SECRET } });
+    const account = await world.addAccount();
+    const res = await world.call("GET", "/me/feedback", { cookie: account.cookie });
+    expect(res.body.installs).toEqual([{ id: "0123456789ab", linkedAt: "y", profile: null }]);
+    expect(res.body.profile).toBeNull();
+  });
+});
