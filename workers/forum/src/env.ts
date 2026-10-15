@@ -15,6 +15,10 @@ export interface Bindings {
   GITHUB_REPO?: string;
   GITHUB_REPO_ID?: string;
   GITHUB_INSTALLATION_ID?: string;
+  // Reconcile job: runs only when all three of the app id, its private key and the installation are set.
+  GITHUB_APP_ID?: string;
+  GITHUB_APP_PRIVATE_KEY?: string;
+  GITHUB_RECONCILE_DAYS?: string;
 }
 
 // A signed-in forum member, resolved from the shared identity + local state.

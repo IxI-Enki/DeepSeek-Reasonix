@@ -8,31 +8,31 @@ import type { AppEnv } from "./env";
 
 export const MAX_HOOK_BYTES = 256 * 1024;
 const MAX_BODY_CHARS = 20_000;
-const DELIVERY_KEEP_MS = 30 * 86_400_000;
-const ORPHAN_KEEP_MS = 7 * 86_400_000;
+export const DELIVERY_KEEP_MS = 30 * 86_400_000;
+export const ORPHAN_KEEP_MS = 7 * 86_400_000;
 const MAX_ORPHANS = 500;
 const STATUS_LABEL = /^status:(recorded|in-progress|fixed)(?::(.+))?$/;
 const DISCUSSION_ACTIONS = new Set(["created", "edited", "deleted", "labeled", "unlabeled", "closed", "reopened", "answered", "unanswered", "locked", "unlocked", "transferred", "category_changed"]);
 const COMMENT_ACTIONS = new Set(["created", "edited", "deleted"]);
 const STATUS_RANK: Record<string, number> = { recorded: 1, in_progress: 2, fixed: 3 };
 
-interface GhUser { login?: string; type?: string }
-interface GhDiscussion {
+export interface GhUser { login?: string; type?: string }
+export interface GhDiscussion {
   node_id?: string; number?: number; title?: string; body?: string | null; user?: GhUser | null;
   category?: { slug?: string } | null; created_at?: string; updated_at?: string; state?: string;
   answer_chosen_at?: string | null; labels?: Array<{ name?: string }>;
 }
-interface GhComment {
+export interface GhComment {
   node_id?: string; id?: number; parent_id?: number | null; body?: string | null; user?: GhUser | null;
   created_at?: string; updated_at?: string;
 }
-interface Payload {
+export interface Payload {
   action?: string; discussion?: GhDiscussion; comment?: GhComment;
   repository?: { id?: number; full_name?: string; private?: boolean };
   installation?: { id?: number };
 }
 
-const NODE_ID = /^[A-Za-z0-9_=-]{1,128}$/;
+export const NODE_ID = /^[A-Za-z0-9_=-]{1,128}$/;
 
 const hex = (bytes: ArrayBuffer) => [...new Uint8Array(bytes)].map((b) => b.toString(16).padStart(2, "0")).join("");
 
@@ -100,7 +100,7 @@ function statusFrom(d: GhDiscussion): { ghStatus: string | null; fixedIn: string
 
 const topicStatus = (d: GhDiscussion) => (d.state === "closed" ? "closed" : d.answer_chosen_at ? "solved" : "open");
 
-type Stmt = D1PreparedStatement;
+export type Stmt = D1PreparedStatement;
 const ok = (c: Context<AppEnv>, status: 200 | 202, note: string) => c.body(note, status);
 
 export async function receiveGithubHook(c: Context<AppEnv>): Promise<Response> {
@@ -173,7 +173,7 @@ const recount = (db: D1Database, topicSql: string, ...bind: unknown[]): Stmt =>
      WHERE id = (${topicSql})`,
   ).bind(...bind);
 
-async function planDiscussion(db: D1Database, payload: Payload, now: string): Promise<Stmt[]> {
+export async function planDiscussion(db: D1Database, payload: Payload, now: string): Promise<Stmt[]> {
   const d = payload.discussion;
   const node = d?.node_id;
   if (!d || !node) return [];
@@ -246,7 +246,7 @@ function insertTopic(db: D1Database, d: GhDiscussion, categoryId: number, now: s
 
 // The text and title are blanked: an erasure and a takedown leave nothing to read
 // even before the row is next touched.
-function tombstoneTopic(db: D1Database, node: string, updated: string, now: string): Stmt[] {
+export function tombstoneTopic(db: D1Database, node: string, updated: string, now: string): Stmt[] {
   return [
     db.prepare("UPDATE topics SET status = 'hidden', title = '[removed]', slug = 'removed', gh_deleted_at = COALESCE(gh_deleted_at, ?2), gh_updated_at = MAX(COALESCE(gh_updated_at, ''), ?3) WHERE gh_node_id = ?1")
       .bind(node, now, updated),
@@ -255,7 +255,7 @@ function tombstoneTopic(db: D1Database, node: string, updated: string, now: stri
   ];
 }
 
-async function planComment(db: D1Database, payload: Payload, now: string): Promise<Stmt[]> {
+export async function planComment(db: D1Database, payload: Payload, now: string): Promise<Stmt[]> {
   const cm = payload.comment;
   const node = payload.discussion?.node_id;
   if (!cm?.node_id || !node) return [];

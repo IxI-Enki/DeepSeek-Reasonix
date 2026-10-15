@@ -5,9 +5,11 @@ import type { Context } from "hono";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
 import { cors } from "hono/cors";
 import { z } from "zod";
-import type { AppEnv } from "./env";
+import type { AppEnv, Bindings } from "./env";
 import { loadMember, currentMember, HttpError } from "./identity";
 import { receiveGithubHook } from "./github_hook";
+import { installationToken } from "./github_app";
+import { reconcile } from "./github_reconcile";
 import { assertCanFlag, assertCanInteract, assertCanPost, dailyPostCap, rateLimited, AUTO_HIDE_FLAGS } from "./antispam";
 
 const app = new Hono<AppEnv>();
@@ -280,4 +282,19 @@ async function setLike(c: Context<AppEnv>, liked: boolean): Promise<Response> {
 app.post("/posts/:id/likes", (c) => setLike(c, true));
 app.delete("/posts/:id/likes", (c) => setLike(c, false));
 
-export default app;
+// Reads GitHub back into the mirror. It does nothing until the App id, its private
+// key and the installation are all configured, and it never writes to GitHub.
+async function scheduled(_controller: ScheduledController, env: Bindings, ctx: ExecutionContext) {
+  if (!env.GITHUB_APP_ID || !env.GITHUB_APP_PRIVATE_KEY || !env.GITHUB_INSTALLATION_ID || !env.GITHUB_REPO || !env.GITHUB_REPO_ID) return;
+  const [owner, name] = env.GITHUB_REPO.split("/");
+  if (!owner || !name) return;
+  const days = Number(env.GITHUB_RECONCILE_DAYS);
+  ctx.waitUntil(
+    reconcile({
+      db: env.DB, owner, name, repoId: env.GITHUB_REPO_ID, days: days > 0 ? days : undefined,
+      token: installationToken({ appId: env.GITHUB_APP_ID, privateKey: env.GITHUB_APP_PRIVATE_KEY, installationId: env.GITHUB_INSTALLATION_ID, repository: name }),
+    }).then((report) => console.log("github reconcile", JSON.stringify(report))),
+  );
+}
+
+export default Object.assign(app, { scheduled });
