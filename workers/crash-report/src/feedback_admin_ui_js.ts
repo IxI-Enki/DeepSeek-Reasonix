@@ -220,9 +220,17 @@ export const APP_JS = String.raw`(function () {
     }, "确认封禁该安装？此后它无法再提交反馈。"));
 
     var thread = d.replies.length ? d.replies.map(function (t) {
+      var shots = t.images || [];
+      var pub = shots.filter(function (i) { return i.released; }).length;
+      var imageRow = shots.length ? h("div", { class: "muted" }, [
+        "回复附图 " + shots.length + " 张（已公开 " + pub + "）　",
+        pub < shots.length && d.issueNumber ? run("公开这条回复的图", base + "/replies/" + t.id + "/release-images", function () { return undefined; }, "确认把这条回复的图片公开到 GitHub 议题？") : null,
+        run("删除这条回复的图", base + "/replies/" + t.id + "/remove-images", function () { return undefined; }, "确认永久删除这条回复的图片？已公开的链接会失效。")
+      ]) : null;
       return h("div", { class: "msg " + (t.author === "user" ? "user" : "maint") }, [
         h("div", { class: "muted", text: (t.author === "user" ? "用户" : "维护者") + " · " + when(t.createdAt) }),
-        h("div", { class: "text", text: t.body })
+        h("div", { class: "text", text: t.body }),
+        imageRow
       ]);
     }) : [h("p", { class: "muted", text: "暂无回复。" })];
 

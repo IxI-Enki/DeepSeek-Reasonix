@@ -643,6 +643,93 @@ describe("user replies", () => {
       expect(imageRows(r)).toEqual([]);
     });
 
+    const recordedWithReplyImages = async (n = 2) => {
+      const r = await receiptOf();
+      await act(r, "release");
+      await act(r, "recorded", { issueNumber: 9, issueUrl: "https://github.com/o/r/issues/9" });
+      const res = await reply(r, { body: "see", ...shots(n) });
+      return { r, replyId: (await json(res)).replyId as number };
+    };
+
+    it("lets a maintainer publish one reply's images on a report that already has a public issue, and audits it", async () => {
+      const { r, replyId } = await recordedWithReplyImages();
+      expect(publicKeys()).toEqual([]);
+      const res = await act(r, `replies/${replyId}/release-images`);
+      expect(res.status).toBe(200);
+      expect(await json(res)).toMatchObject({ released: 2 });
+      expect(publicKeys()).toHaveLength(2);
+      const items = (await json(await get("/v1/admin/feedback/replies/pending"))).items;
+      for (const a of items[0].attachments) expect(a).toMatchObject({ released: true, url: expect.stringMatching(/^https:\/\/crash\.reasonix\.io\/v1\/feedback\/attachments\//) });
+      const detailed = (await json(await get(`/v1/admin/feedback/${r}`))).replies.find((x: any) => x.id === replyId);
+      expect(detailed.images.map((i: any) => i.released)).toEqual([true, true]);
+      const audit = raw.prepare("SELECT action, detail FROM feedback_audit WHERE action = 'release_reply_images'").all() as { action: string; detail: string }[];
+      expect(audit).toHaveLength(1);
+      expect(audit[0].detail).toContain(`reply=${replyId}`);
+    });
+
+    it("puts the reply back in the converter's queue when its images change, so a mirrored comment can be re-rendered", async () => {
+      const { r, replyId } = await recordedWithReplyImages(1);
+      const ackId = (await json(await get("/v1/admin/feedback/replies/pending"))).items[0].id as string;
+      expect((await post(`/v1/admin/feedback/replies/${ackId}/ack`, {}, admin)).status).toBe(200);
+      expect((await json(await get("/v1/admin/feedback/replies/pending"))).items).toEqual([]);
+      await act(r, `replies/${replyId}/release-images`);
+      expect((await json(await get("/v1/admin/feedback/replies/pending"))).items).toHaveLength(1);
+      await post(`/v1/admin/feedback/replies/${ackId}/ack`, {}, admin);
+      await act(r, `replies/${replyId}/remove-images`);
+      const again = (await json(await get("/v1/admin/feedback/replies/pending"))).items;
+      expect(again).toHaveLength(1);
+      expect(again[0].attachments).toEqual([]);
+    });
+
+    it("refuses to publish reply images on a report with no public issue", async () => {
+      const r = await receiptOf();
+      await act(r, "ask", { body: "more?" });
+      const { replyId } = await json(await reply(r, { body: "here", ...shots(1) })).then((j: any) => ({ replyId: j.replyId as number }));
+      const res = await act(r, `replies/${replyId}/release-images`);
+      expect(res.status).toBe(409);
+      expect(await errCode(res)).toBe("feedback.bad_transition");
+      expect(publicKeys()).toEqual([]);
+    });
+
+    it("answers 404 for a reply with no images or a reply of another report", async () => {
+      const { r } = await recordedWithReplyImages(1);
+      const plain = await json(await reply(r, { body: "text only" }));
+      expect((await act(r, `replies/${plain.replyId}/release-images`)).status).toBe(404);
+      const other = await receiptOf({ installId: ids.b });
+      expect((await act(other, "replies/1/release-images")).status).toBe(404);
+    });
+
+    it("removes one reply's images everywhere: objects, rows and the public index, and audits it", async () => {
+      const { r, replyId } = await recordedWithReplyImages(2);
+      await act(r, `replies/${replyId}/release-images`);
+      expect(objects.size).toBe(2);
+      const res = await act(r, `replies/${replyId}/remove-images`);
+      expect(res.status).toBe(200);
+      expect(await json(res)).toMatchObject({ removed: 2 });
+      expect(objects.size).toBe(0);
+      expect(imageRows(r)).toEqual([]);
+      expect(publicKeys()).toEqual([]);
+      expect((await json(await get("/v1/admin/feedback/replies/pending"))).items[0].attachments).toEqual([]);
+      expect(raw.prepare("SELECT COUNT(*) AS n FROM feedback_audit WHERE action = 'remove_reply_images'").get()).toEqual({ n: 1 });
+    });
+
+    it("leaves other replies' images alone when one reply's are removed", async () => {
+      const { r, replyId } = await recordedWithReplyImages(1);
+      raw.exec("DELETE FROM feedback_quota WHERE bucket LIKE 'rh:%'");
+      await reply(r, { body: "again", ...shots(1) });
+      await act(r, `replies/${replyId}/remove-images`);
+      expect(objects.size).toBe(1);
+      expect(imageRows(r)).toHaveLength(1);
+    });
+
+    it("keeps the reply-image admin actions behind the admin token", async () => {
+      const { r, replyId } = await recordedWithReplyImages(1);
+      for (const action of ["release-images", "remove-images"]) {
+        expect((await post(`/v1/admin/feedback/${r}/replies/${replyId}/${action}`, {})).status).toBe(401);
+      }
+      expect(objects.size).toBe(1);
+    });
+
     it("takes reply images down with the report and drops them in retention", async () => {
       const r = await receiptOf();
       await act(r, "release");

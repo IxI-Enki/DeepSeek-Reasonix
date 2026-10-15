@@ -5,6 +5,7 @@ import { clearRevokedStatement, markRevokedStatement } from "./feedback_adoption
 import { auditStatement, autoBlockStatement, grantTrustStatement, isBlocked, isTrusted, releaseLedgerStatement, revokeTrustStatement } from "./feedback_blocks";
 import { jsonResponse, refuse } from "./feedback_http";
 import { releasedKeys, repliesFor } from "./feedback_read";
+import { replyImagesOf } from "./feedback_reply_images";
 import { RejectBody, ReleaseBody, ReplyBody } from "./feedback_schema";
 import { HELD_OVERDUE_DAYS, UNCONVERTED_RETENTION_DAYS, type FeedbackRow, type StoredAttachment } from "./feedback_types";
 import { announce, type OpsWaiter } from "./ops_emit";
@@ -81,6 +82,7 @@ export async function detail(env: Env, receipt: string): Promise<Response> {
   if (!row) return refuse("feedback.not_found", "unknown receipt");
   const released = await releasedKeys(env, [receipt]);
   const thread = (await repliesFor(env, [receipt], 500)).get(receipt) ?? [];
+  const replyImages = await replyImagesOf(env, receipt, released);
   return jsonResponse({
     receipt,
     status: row.status,
@@ -96,7 +98,7 @@ export async function detail(env: Env, receipt: string): Promise<Response> {
     issueUrl: row.issue_url,
     resolvedVersion: row.resolved_version,
     duplicateOf: row.duplicate_of,
-    replies: thread.map((t) => ({ id: t.id, author: t.author, body: t.body, createdAt: t.created_at })),
+    replies: thread.map((t) => ({ id: t.id, author: t.author, body: t.body, createdAt: t.created_at, images: replyImages.get(t.id) ?? [] })),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   });
