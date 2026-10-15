@@ -1,5 +1,5 @@
 import type { Env } from "./env";
-import { deleteAttachments, withdrawAttachments, ATTACHMENT_PREFIX } from "./feedback_attachments";
+import { allAttachmentsOf, deleteAttachments, withdrawAttachments, ATTACHMENT_PREFIX } from "./feedback_attachments";
 import { load, listLimit, readJson } from "./feedback_admin_store";
 import { clearRevokedStatement, markRevokedStatement } from "./feedback_adoptions";
 import { auditStatement, autoBlockStatement, grantTrustStatement, isBlocked, isTrusted, releaseLedgerStatement, revokeTrustStatement } from "./feedback_blocks";
@@ -26,14 +26,13 @@ function replyStatements(env: Env, receipt: string, body: string, status?: strin
   ];
 }
 
-function attachmentsOf(row: FeedbackRow): StoredAttachment[] {
-  return JSON.parse(row.attachments_json) as StoredAttachment[];
-}
-
 // Objects are deleted before the row forgets them, so a failure leaves a retryable trace.
 async function dropAttachments(env: Env, row: FeedbackRow): Promise<void> {
-  await withdrawAttachments(env, row.receipt, attachmentsOf(row));
-  await env.DB.prepare("UPDATE feedback SET attachments_json = '[]' WHERE receipt = ?").bind(row.receipt).run();
+  await withdrawAttachments(env, row.receipt, await allAttachmentsOf(env, row));
+  await env.DB.batch([
+    env.DB.prepare("UPDATE feedback SET attachments_json = '[]' WHERE receipt = ?").bind(row.receipt),
+    env.DB.prepare("DELETE FROM feedback_reply_attachments WHERE receipt = ?").bind(row.receipt),
+  ]);
 }
 
 export async function held(env: Env, url: URL): Promise<Response> {
@@ -50,6 +49,7 @@ export async function held(env: Env, url: URL): Promise<Response> {
     for (const r of results) trusted.add(r.install_hash);
   }
   const replies = await repliesFor(env, rows.map((r) => r.receipt), 500);
+  const stored = new Map(await Promise.all(rows.map(async (r) => [r.receipt, await allAttachmentsOf(env, r)] as const)));
   const now = Date.now();
   return jsonResponse({
     items: rows.map((r) => {
@@ -63,7 +63,7 @@ export async function held(env: Env, url: URL): Promise<Response> {
         displayName: r.display_name,
         contact: r.contact,
         env: JSON.parse(r.env_json) as Record<string, string>,
-        attachments: attachmentsOf(r).map((a) => ({ key: a.key, name: a.name, contentType: a.contentType, size: a.size })),
+        attachments: (stored.get(r.receipt) ?? []).map((a) => ({ key: a.key, name: a.name, contentType: a.contentType, size: a.size })),
         installHash: r.install_hash,
         installTrusted: trusted.has(r.install_hash),
         replies: (replies.get(r.receipt) ?? []).map((t) => ({ id: t.id, author: t.author, body: t.body, createdAt: t.created_at })),
@@ -89,7 +89,7 @@ export async function detail(env: Env, receipt: string): Promise<Response> {
     displayName: row.display_name,
     contact: row.contact,
     env: JSON.parse(row.env_json) as Record<string, string>,
-    attachments: attachmentsOf(row).map((a) => ({ key: a.key, name: a.name, contentType: a.contentType, size: a.size, released: released.has(a.key) })),
+    attachments: (await allAttachmentsOf(env, row)).map((a) => ({ key: a.key, name: a.name, contentType: a.contentType, size: a.size, released: released.has(a.key) })),
     installHash: row.install_hash,
     installTrusted: await isTrusted(env, row.install_hash),
     issueNumber: row.issue_number,
@@ -116,7 +116,7 @@ export async function release(request: Request, env: Env, receipt: string, ctx?:
     grantTrustStatement(env, row.install_hash, receipt),
     clearRevokedStatement(env, row.install_hash, receipt),
     ...(body.data.publishImages
-      ? attachmentsOf(row).map((a) =>
+      ? (await allAttachmentsOf(env, row)).map((a) =>
           env.DB.prepare("INSERT OR IGNORE INTO feedback_public_images (key, receipt, created_at) SELECT ?, ?, ? WHERE EXISTS (SELECT 1 FROM feedback WHERE receipt = ? AND status = 'received')").bind(a.key, receipt, at, receipt),
         )
       : []),
@@ -194,10 +194,11 @@ export async function adminReply(request: Request, env: Env, receipt: string, ct
 export async function takedown(env: Env, receipt: string): Promise<Response> {
   const row = await load(env, receipt);
   if (!row) return refuse("feedback.not_found", "unknown receipt");
-  const stored = attachmentsOf(row);
+  const stored = await allAttachmentsOf(env, row);
   if (env.TELEMETRY_RAW) await deleteAttachments(env.TELEMETRY_RAW, stored);
   await env.DB.batch([
     env.DB.prepare("UPDATE feedback SET attachments_json = '[]', updated_at = ? WHERE receipt = ?").bind(new Date().toISOString(), receipt),
+    env.DB.prepare("DELETE FROM feedback_reply_attachments WHERE receipt = ?").bind(receipt),
     env.DB.prepare("DELETE FROM feedback_public_images WHERE receipt = ?").bind(receipt),
     revokeTrustStatement(env, row.install_hash),
     markRevokedStatement(env, row.install_hash),
@@ -210,7 +211,7 @@ export async function takedown(env: Env, receipt: string): Promise<Response> {
 // read path for an unreleased one and it sits behind the admin bearer.
 export async function adminAttachment(env: Env, receipt: string, key: string): Promise<Response> {
   const row = await load(env, receipt);
-  const a = row ? attachmentsOf(row).find((x) => x.key === key) : undefined;
+  const a = row ? (await allAttachmentsOf(env, row)).find((x) => x.key === key) : undefined;
   const obj = a && env.TELEMETRY_RAW ? await env.TELEMETRY_RAW.get(ATTACHMENT_PREFIX + key) : null;
   if (!a || !obj) return refuse("feedback.not_found", "unknown attachment");
   return new Response(obj.body, {

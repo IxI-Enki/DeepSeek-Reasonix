@@ -567,6 +567,95 @@ describe("triage transitions", () => {
 describe("user replies", () => {
   const reply = (r: string, body: unknown, id = ids.a) => post(`/v1/feedback/${r}/reply`, body, as(id));
 
+  describe("with images", () => {
+    const shots = (n: number) => ({ attachments: Array.from({ length: n }, (_, i) => ({ name: `s${i}.png`, contentType: "image/png", dataBase64: PNG_B64 })) });
+    const imageRows = (r: string) => raw.prepare("SELECT reply_id, attachments_json FROM feedback_reply_attachments WHERE receipt = ?").all(r) as { reply_id: number; attachments_json: string }[];
+    const publicKeys = () => raw.prepare("SELECT key FROM feedback_public_images").all().map((x: any) => x.key as string);
+
+    it("stores the images with the reply and keeps them private while the report is under review", async () => {
+      const r = await receiptOf();
+      await act(r, "ask", { body: "can you show it?" });
+      const res = await reply(r, { body: "here", ...shots(2) });
+      expect(res.status).toBe(201);
+      const rows = imageRows(r);
+      expect(rows).toHaveLength(1);
+      expect(rows[0].reply_id).toBe((await json(res)).replyId);
+      expect(JSON.parse(rows[0].attachments_json)).toHaveLength(2);
+      expect(objects.size).toBe(2);
+      expect(publicKeys()).toEqual([]);
+      const triage = (await json(await get("/v1/admin/feedback/replies/triage"))).items;
+      expect(triage).toEqual([]);
+      expect((await json(await get(`/v1/admin/feedback/${r}`))).attachments).toHaveLength(2);
+    });
+
+    it("never publishes them on its own, even when the report already has a public issue", async () => {
+      const r = await receiptOf();
+      await act(r, "release");
+      await act(r, "recorded", { issueNumber: 9, issueUrl: "https://github.com/o/r/issues/9" });
+      expect((await reply(r, { body: "still broken", ...shots(3) })).status).toBe(201);
+      expect(publicKeys()).toEqual([]);
+      const items = (await json(await get("/v1/admin/feedback/replies/pending"))).items;
+      expect(items[0].attachments).toHaveLength(3);
+      for (const a of items[0].attachments) {
+        expect(a).toMatchObject({ released: false, contentType: "image/png" });
+        expect(a).not.toHaveProperty("url");
+      }
+      const key = JSON.parse((raw.prepare("SELECT attachments_json FROM feedback_reply_attachments").get() as { attachments_json: string }).attachments_json)[0].key as string;
+      expect((await call(`/v1/feedback/attachments/${key}`)).status).toBe(404);
+    });
+
+    it("refuses more than three, a wrong type or embedded metadata, and stores nothing", async () => {
+      const r = await receiptOf();
+      await act(r, "release");
+      await act(r, "recorded", { issueNumber: 9, issueUrl: "https://github.com/o/r/issues/9" });
+      expect((await reply(r, { body: "x", ...shots(4) })).status).toBe(400);
+      expect(await errCode(await reply(r, { body: "x", attachments: [{ name: "a.gif", contentType: "image/gif", dataBase64: PNG_B64 }] }))).toBe("feedback.invalid");
+      expect(objects.size).toBe(0);
+      expect(imageRows(r)).toEqual([]);
+    });
+
+    it("removes the stored objects when the reply itself is refused", async () => {
+      const r = await receiptOf();
+      await act(r, "reject");
+      const res = await reply(r, { body: "please", ...shots(1) });
+      expect(res.status).toBeGreaterThanOrEqual(400);
+      expect(objects.size).toBe(0);
+      expect(imageRows(r)).toEqual([]);
+    });
+
+    it("publishes a held report's reply images together with its own on release", async () => {
+      const r = await receiptOf(withImage);
+      await act(r, "ask", { body: "more?" });
+      await reply(r, { body: "here", ...shots(1) });
+      expect(publicKeys()).toEqual([]);
+      await act(r, "release");
+      expect(publicKeys()).toHaveLength(2);
+    });
+
+    it("purges reply images with a stale unconverted report", async () => {
+      const r = await receiptOf();
+      await act(r, "ask", { body: "more?" });
+      await reply(r, { body: "here", ...shots(2) });
+      const old = new Date(Date.now() - 40 * 86_400_000).toISOString();
+      raw.prepare("UPDATE feedback SET created_at = ?, updated_at = ?").run(old, old);
+      await purgeStaleFeedback(env);
+      expect(objects.size).toBe(0);
+      expect(imageRows(r)).toEqual([]);
+    });
+
+    it("takes reply images down with the report and drops them in retention", async () => {
+      const r = await receiptOf();
+      await act(r, "release");
+      await act(r, "recorded", { issueNumber: 9, issueUrl: "https://github.com/o/r/issues/9" });
+      await reply(r, { body: "x", ...shots(2) });
+      expect(objects.size).toBe(2);
+      expect((await act(r, "takedown")).status).toBe(200);
+      expect(objects.size).toBe(0);
+      expect(imageRows(r)).toEqual([]);
+      expect(publicKeys()).toEqual([]);
+    });
+  });
+
   it("moves needs_info back to held when the user replies", async () => {
     const r = await receiptOf();
     await act(r, "ask", { body: "which os?" });
@@ -647,7 +736,7 @@ describe("user replies", () => {
       expect(statusOf(r)).toBe("recorded");
       expect(versionOf(r)).toBeNull();
       const { items } = await json(await get("/v1/admin/feedback/replies/pending"));
-      expect(items).toEqual([{ id: expect.any(String), receipt: r, body: "still broken on 1.2.3", issueNumber: 9 }]);
+      expect(items).toEqual([{ id: expect.any(String), receipt: r, body: "still broken on 1.2.3", issueNumber: 9, attachments: [] }]);
       expect((await mine(ids.a)).find((i) => i.receipt === r)?.status).toBe("recorded");
     });
 
@@ -731,7 +820,7 @@ describe("user replies", () => {
     await act(r, "recorded", { issueNumber: 9, issueUrl: "https://github.com/o/r/issues/9" });
     await reply(r, { body: "still happens" });
     const { items } = await json(await get("/v1/admin/feedback/replies/pending"));
-    expect(items).toEqual([{ id: expect.stringMatching(/^[A-Za-z0-9_-]{1,64}$/), receipt: r, body: "still happens", issueNumber: 9 }]);
+    expect(items).toEqual([{ id: expect.stringMatching(/^[A-Za-z0-9_-]{1,64}$/), receipt: r, body: "still happens", issueNumber: 9, attachments: [] }]);
     expect((await post(`/v1/admin/feedback/replies/${items[0].id}/ack`, {}, admin)).status).toBe(200);
     expect((await json(await get("/v1/admin/feedback/replies/pending"))).items).toEqual([]);
     expect(await errCode(await post("/v1/admin/feedback/replies/999/ack", {}, admin))).toBe("feedback.not_found");

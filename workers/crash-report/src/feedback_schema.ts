@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { CATEGORIES, MAX_CAP, MAX_REPLY_BYTES } from "./feedback_types";
+import { CATEGORIES, MAX_ATTACHMENTS, MAX_CAP, MAX_REPLY_BYTES } from "./feedback_types";
 
 const short = (n: number) => z.string().max(n).optional();
 
@@ -50,6 +50,9 @@ const text = (maxBytes: number) =>
     .refine((s) => new TextEncoder().encode(s).length <= maxBytes);
 
 export const ReplyBody = z.object({ body: text(MAX_REPLY_BYTES) });
+export const UserReplyBody = ReplyBody.extend({
+  attachments: z.array(z.object({ name: z.string().max(200), contentType: z.string().max(40), dataBase64: z.string() })).max(MAX_ATTACHMENTS).default([]),
+});
 export const ReleaseBody = z.object({ publishImages: z.boolean().default(true) });
 export const RejectBody = z.object({ reason: z.string().trim().min(1).max(200) });
 export const BlockBody = z.object({ target: z.string().max(80), reason: z.string().trim().min(1).max(200), hours: z.number().int().min(1).max(8760).optional() });
