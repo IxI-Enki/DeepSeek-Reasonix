@@ -84,6 +84,16 @@ describe("reconcile", () => {
     expect((await topic())?.replies).toBe(1);
   });
 
+  it("handles a discussion with more comments than one D1 statement can bind", async () => {
+    const many = (count: number, skip = -1) => Array.from({ length: count }, (_, i) => i).filter((i) => i !== skip).map((i) => comment({ id: `DC_${i}`, databaseId: 1000 + i, body: `comment ${i}` }));
+    await run(github({ listing: [discussion({ comments: { pageInfo: { hasNextPage: false }, nodes: many(130) } })] }));
+    expect((await topic())?.replies).toBe(130);
+    const report = await run(github({ listing: [discussion({ updatedAt: T2, comments: { pageInfo: { hasNextPage: false }, nodes: many(130, 7) } })] }));
+    expect(report.stopped).toBeUndefined();
+    expect((await posts()).filter((p) => p.status === "deleted").map((p) => p.node)).toEqual(["DC_7"]);
+    expect((await topic())?.replies).toBe(129);
+  });
+
   it("does not treat a partial comment listing as proof that a comment is gone", async () => {
     await run(github({ listing: [discussion({ comments: { pageInfo: { hasNextPage: false }, nodes: [comment(), comment({ id: "DC_2", databaseId: 102 })] } })] }));
     const partial = discussion({ updatedAt: T2, comments: { pageInfo: { hasNextPage: true, endCursor: "x" }, nodes: [comment()] } });
