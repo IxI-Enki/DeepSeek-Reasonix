@@ -43,6 +43,7 @@ CREATE TABLE IF NOT EXISTS topics (
 );
 CREATE INDEX IF NOT EXISTS topics_category ON topics (category_id, pinned DESC, last_post_at DESC);
 CREATE INDEX IF NOT EXISTS topics_recent ON topics (last_post_at DESC);
+CREATE INDEX IF NOT EXISTS topics_author_created_at ON topics (author, created_at DESC);
 CREATE INDEX IF NOT EXISTS topics_visible_latest
   ON topics (pinned DESC, last_post_at DESC)
   WHERE status <> 'hidden';

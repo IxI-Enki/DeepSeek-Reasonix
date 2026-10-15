@@ -10,13 +10,14 @@ describe("forum performance indexes", () => {
       expect(sql).toMatch(/CREATE INDEX IF NOT EXISTS posts_author_created_at\s+ON posts \(author, created_at\)/);
       expect(sql).toMatch(/CREATE INDEX IF NOT EXISTS posts_visible_topic\s+ON posts \(topic_id, created_at\)\s+WHERE status = 'visible'/);
       expect(sql).toMatch(/CREATE INDEX IF NOT EXISTS topics_visible_latest\s+ON topics \(pinned DESC, last_post_at DESC\)\s+WHERE status <> 'hidden'/);
+      expect(sql).toMatch(/CREATE INDEX IF NOT EXISTS topics_author_created_at\s+ON topics \(author, created_at DESC\)/);
       expect(sql).toMatch(/CREATE INDEX IF NOT EXISTS topics_visible_top\s+ON topics \(reply_count DESC, last_post_at DESC\)\s+WHERE status <> 'hidden'/);
     }
   });
 
   it("keeps the migration additive and idempotent", () => {
     expect(migration).not.toMatch(/\b(?:DROP|ALTER)\b/);
-    expect(migration.match(/CREATE INDEX IF NOT EXISTS/g)).toHaveLength(4);
+    expect(migration.match(/CREATE INDEX IF NOT EXISTS/g)).toHaveLength(5);
   });
 
   it("removes full scans from the hot topic and post-count queries", () => {
@@ -33,6 +34,11 @@ describe("forum performance indexes", () => {
       expect(postsPlan).toContain("USING COVERING INDEX posts_author_created_at");
       expect(topicsPlan).toContain("USING INDEX topics_visible_latest");
       expect(topicsPlan).not.toContain("USE TEMP B-TREE FOR ORDER BY");
+      const ownPlan = db.prepare(
+        "EXPLAIN QUERY PLAN SELECT id FROM topics WHERE author = 'a@example.test' AND status != 'hidden' ORDER BY created_at DESC LIMIT 5",
+      ).all().map((row: Record<string, unknown>) => String(row.detail)).join(" ");
+      expect(ownPlan).toContain("USING INDEX topics_author_created_at");
+      expect(ownPlan).not.toContain("USE TEMP B-TREE FOR ORDER BY");
     } finally {
       db.close();
     }
