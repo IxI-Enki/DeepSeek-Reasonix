@@ -7,6 +7,7 @@ import { cors } from "hono/cors";
 import { z } from "zod";
 import type { AppEnv } from "./env";
 import { loadMember, currentMember, HttpError } from "./identity";
+import { receiveGithubHook } from "./github_hook";
 import { assertCanFlag, assertCanInteract, assertCanPost, dailyPostCap, rateLimited, AUTO_HIDE_FLAGS } from "./antispam";
 
 const app = new Hono<AppEnv>();
@@ -35,6 +36,9 @@ app.use("*", (c, next) => {
     allowHeaders: ["Content-Type", "Authorization"],
   })(c, next);
 });
+// Signed by GitHub, not by a member: mounted before the member lookup so it never
+// touches the identity service, and outside the browser CORS surface.
+app.post("/hooks/github/discussions", receiveGithubHook);
 app.use("*", loadMember);
 
 const slugify = (s: string) =>
@@ -99,7 +103,8 @@ app.get("/topics", async (c) => {
   const stmt = c.env.DB.prepare(
     `SELECT t.id, t.title, t.slug, t.status, t.pinned, t.reply_count AS replyCount, t.view_count AS viewCount,
             COALESCE(m.handle, 'deleted') AS author, t.created_at AS createdAt, t.last_post_at AS lastPostAt,
-            cat.slug AS category, cat.name AS categoryName
+            cat.slug AS category, cat.name AS categoryName,
+            t.source AS source, t.gh_number AS ghNumber, t.gh_status AS ghStatus, t.fixed_in AS fixedIn
      FROM topics t JOIN categories cat ON cat.id = t.category_id
      LEFT JOIN members m ON m.email = t.author ${where} ORDER BY ${order} LIMIT 50`,
   );
@@ -114,7 +119,8 @@ app.get("/topics/:id", async (c) => {
   const topic = await c.env.DB.prepare(
     `SELECT t.id, t.title, t.slug, t.status, t.pinned, COALESCE(m.handle, 'deleted') AS author,
             t.accepted_post_id AS acceptedPostId,
-            t.reply_count AS replyCount, t.view_count AS viewCount, t.created_at AS createdAt, cat.slug AS category
+            t.reply_count AS replyCount, t.view_count AS viewCount, t.created_at AS createdAt, cat.slug AS category,
+            t.source AS source, t.gh_number AS ghNumber, t.gh_status AS ghStatus, t.fixed_in AS fixedIn
      FROM topics t JOIN categories cat ON cat.id = t.category_id
      LEFT JOIN members m ON m.email = t.author WHERE t.id = ?1 AND t.status != 'hidden'`,
   ).bind(id).first();
@@ -189,11 +195,13 @@ app.post("/topics/:id/posts", async (c) => {
   const topicId = Number(c.req.param("id"));
   const input = Reply.parse(await c.req.json());
   const topic = await c.env.DB.prepare(
-    "SELECT t.id, t.status, c.min_trust_to_post AS minTrust FROM topics t JOIN categories c ON c.id = t.category_id WHERE t.id = ?1",
+    "SELECT t.id, t.status, t.source, c.min_trust_to_post AS minTrust FROM topics t JOIN categories c ON c.id = t.category_id WHERE t.id = ?1",
   )
     .bind(topicId)
-    .first<{ id: number; status: string; minTrust: number }>();
+    .first<{ id: number; status: string; source: string; minTrust: number }>();
   if (!topic || topic.status === "hidden") throw new HttpError(404, "not_found", "That topic doesn't exist.");
+  // A mirrored thread's text belongs to GitHub; a reply written here would exist on one side only.
+  if (topic.source !== "forum") throw new HttpError(409, "read_only_mirror", "This thread is mirrored from GitHub Discussions and cannot be replied to here.");
   if (topic.status === "closed") throw new HttpError(403, "closed", "This topic is closed to new replies.");
   assertCanPost(member, { minTrust: topic.minTrust, body: input.body });
   await enforcePostRate(c, member);
