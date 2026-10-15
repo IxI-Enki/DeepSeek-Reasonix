@@ -46,8 +46,12 @@ import PasswordInput from '../components/PasswordInput.astro';
 
       <article class="acct-card" id="card-feedback">
         <h3><span class="l-en">Feedback level</span><span class="l-zh">反馈等级</span></h3>
-        <p class="acct-big"><span class="l-en">Not linked yet</span><span class="l-zh">尚未关联</span></p>
-        <p class="acct-note"><span class="l-en">Reports you send from Studio earn a level as they ship, from New seed up to Grove, and a higher level raises your hourly and daily limits. Your level shows up here once Studio links to this account.</span><span class="l-zh">在 Studio 里提交的反馈被采纳后会提升等级（新种 → 共林），等级越高每小时和每天可提交的条数越多。Studio 与此账号关联后，你的等级会显示在这里。</span></p>
+        <p class="acct-big" id="fb-level">—</p>
+        <div id="fb-track" class="acct-track" hidden><i id="fb-fill"></i></div>
+        <p class="acct-note" id="fb-note"></p>
+        <p class="acct-note" id="fb-limits"></p>
+        <ul id="fb-installs" class="acct-recent"></ul>
+        <ul id="fb-items" class="acct-recent"></ul>
       </article>
 
       <article class="acct-card" id="card-devices">
