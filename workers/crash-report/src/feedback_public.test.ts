@@ -104,4 +104,15 @@ describe("the public feedback feed", () => {
     expect((await get("?limit=0"))!.status).toBe(400);
     expect((await get("?limit=201"))!.status).toBe(400);
   });
+
+  it("serves a full page of the largest size within the database's bound-parameter limit", async () => {
+    const rows = Array.from({ length: 150 }, () => row());
+    raw.prepare("INSERT INTO feedback_public_images (key, receipt, created_at) VALUES ('released-image-key-0150', ?, '2026-10-15T00:00:00Z')").run(rows[149]!.receipt);
+    const res = (await get("?limit=150"))!;
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { items: { issue: number; images: string[] }[]; next: string | null };
+    expect(body.items).toHaveLength(150);
+    expect(body.next).toBeNull();
+    expect(body.items.find((i) => i.issue === rows[149]!.issue_number)?.images).toEqual(["https://crash.reasonix.io/v1/feedback/attachments/released-image-key-0150"]);
+  });
 });

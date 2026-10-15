@@ -1,11 +1,17 @@
 // @ts-expect-error Node 22+ provides node:sqlite; Worker production code does not import it.
 import type { DatabaseSync } from "node:sqlite";
 
+// Cloudflare D1 refuses a statement with more than 100 bound parameters; SQLite itself allows far more.
+export const D1_MAX_BOUND = 100;
+
 export function d1(db: DatabaseSync): D1Database {
   const stmt = (sql: string, args: unknown[] = []): any => ({
     sql,
     args,
-    bind: (...a: unknown[]) => stmt(sql, a),
+    bind: (...a: unknown[]) => {
+      if (a.length > D1_MAX_BOUND) throw new Error(`D1_ERROR: too many SQL variables (${a.length} bound, at most ${D1_MAX_BOUND})`);
+      return stmt(sql, a);
+    },
     first: async () => db.prepare(sql).get(...args) ?? null,
     all: async () => ({ results: db.prepare(sql).all(...args) }),
     run: async () => {
