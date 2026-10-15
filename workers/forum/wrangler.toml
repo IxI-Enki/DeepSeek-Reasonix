@@ -16,6 +16,11 @@ APP_ORIGIN = "https://reasonix.io"
 ALLOWED_ORIGINS = "https://reasonix.io,https://www.reasonix.io"
 # Shared identity service that resolves the session.
 ID_ORIGIN = "https://id.reasonix.io"
+# GitHub Discussions projection (RFC #13141). The route stays 404 until the
+# GITHUB_WEBHOOK_SECRET secret is set. Installation of the "Reasonix Forum Bridge" App (id 5326038).
+GITHUB_REPO = "esengine/DeepSeek-Reasonix"
+GITHUB_REPO_ID = "1216785679"
+GITHUB_INSTALLATION_ID = "171606831"
 # Emails minted as forum admins/moderators on first sign-in.
 ADMIN_EMAILS = "359807859@qq.com"
 

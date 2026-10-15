@@ -9,6 +9,12 @@ export interface Bindings {
   ALLOWED_ORIGINS: string;
   ID_ORIGIN: string;
   ADMIN_EMAILS?: string;
+  // GitHub Discussions projection. The route does not exist until the secret is set.
+  GITHUB_WEBHOOK_SECRET?: string;
+  GITHUB_WEBHOOK_SECRET_PREVIOUS?: string;
+  GITHUB_REPO?: string;
+  GITHUB_REPO_ID?: string;
+  GITHUB_INSTALLATION_ID?: string;
 }
 
 // A signed-in forum member, resolved from the shared identity + local state.
