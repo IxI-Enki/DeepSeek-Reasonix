@@ -68,6 +68,11 @@ Administration, all behind the admin bearer:
 - Revoking trust (`DELETE .../trust`, reject, takedown) marks the install revoked, so
   later credits count but do not renew trust. An explicit trust grant or a release
   clears the mark.
+- `POST .../<receipt>/replies/<id>/release-images` publishes one reply's images, only
+  on a report that already has a public issue (`recorded`, `in_progress`, `fixed`;
+  otherwise `feedback.bad_transition`). Reply images are private until this call or a
+  release of the whole report. `POST .../replies/<id>/remove-images` deletes that
+  reply's objects, rows and public index entries. Both write an audit row.
 
 ## Refusal contract
 

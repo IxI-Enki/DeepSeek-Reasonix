@@ -6,6 +6,7 @@ import { listFeedback } from "./feedback_admin_list";
 import { requireAdmin } from "./feedback_auth";
 import { jsonResponse, refuse } from "./feedback_http";
 import { pendingItem, releasedKeys } from "./feedback_read";
+import { releaseReplyImages, removeReplyImages } from "./feedback_reply_images";
 import { announce, type OpsWaiter } from "./ops_emit";
 import { LinkBody, RecordedBody, StatusBody } from "./feedback_schema";
 import { adminAttachment, adminReply, answer, ask, detail, held, reject, release, takedown } from "./feedback_triage";
@@ -119,12 +120,12 @@ const NOT_ALLOWED = () => refuse("feedback.method_not_allowed", "method not allo
 
 export async function handleAdmin(request: Request, env: Env, url: URL, ctx?: OpsWaiter): Promise<Response | null> {
   const path = url.pathname;
-  const m = path.match(/^\/v1\/admin\/feedback\/(?:(pending|open|held|list|blocks?|cap)|(replies)\/(pending|triage)|replies\/([A-Za-z0-9_-]{1,64})\/ack|(FB-[0-9A-Z]{4}-[0-9A-Z]{4})(?:\/(recorded|link|status|release|reject|answer|ask|reply|takedown|trust|adoption)|\/attachments\/([A-Za-z0-9_-]{16,64}))?)$/);
+  const m = path.match(/^\/v1\/admin\/feedback\/(?:(pending|open|held|list|blocks?|cap)|(replies)\/(pending|triage)|replies\/([A-Za-z0-9_-]{1,64})\/ack|(FB-[0-9A-Z]{4}-[0-9A-Z]{4})(?:\/(recorded|link|status|release|reject|answer|ask|reply|takedown|trust|adoption)|\/attachments\/([A-Za-z0-9_-]{16,64})|\/replies\/(\d{1,15})\/(release-images|remove-images))?)$/);
   if (!m) return null;
   const denied = await requireAdmin(request, env);
   if (denied) return denied;
   const method = request.method;
-  const [, name, , , ackId, receipt, action, attachmentKey] = m;
+  const [, name, , , ackId, receipt, action, attachmentKey, imageReply, imageAction] = m;
   if (m[2] === "replies") return method !== "GET" ? NOT_ALLOWED() : m[3] === "triage" ? triageReplies(env, url) : pendingReplies(env, url);
   if (ackId) return method === "POST" ? ackReply(env, ackId) : NOT_ALLOWED();
   if (name) {
@@ -144,6 +145,10 @@ export async function handleAdmin(request: Request, env: Env, url: URL, ctx?: Op
     return listBlocks(env);
   }
   if (attachmentKey) return method === "GET" ? adminAttachment(env, receipt, attachmentKey) : NOT_ALLOWED();
+  if (imageReply) {
+    if (method !== "POST") return NOT_ALLOWED();
+    return imageAction === "release-images" ? releaseReplyImages(env, receipt, imageReply) : removeReplyImages(env, receipt, imageReply);
+  }
   if (!action) return method === "GET" ? detail(env, receipt) : NOT_ALLOWED();
   if (action === "adoption") return method === "POST" ? recordAdoption(request, env, receipt) : method === "DELETE" ? tombstoneAdoption(env, receipt) : NOT_ALLOWED();
   if (action === "trust") return method === "POST" || method === "DELETE" ? setReceiptTrust(env, receipt, method === "POST") : NOT_ALLOWED();
