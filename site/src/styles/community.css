@@ -126,6 +126,7 @@ body.mobile-nav-open { overflow: hidden; }
 
 .badge { display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; font-weight: 600; padding: 3px 9px; border-radius: 999px; }
 .badge.solved { color: var(--ok); background: var(--ok-soft); }
+.badge.gh { color: var(--ink-3); background: var(--bg-soft); box-shadow: inset 0 0 0 1px var(--line); }
 .badge.pinned { color: var(--accent); background: var(--accent-soft); }
 .badge.role { color: var(--ink-3); background: var(--bg-soft); box-shadow: inset 0 0 0 1px var(--line); }
 .badge.role.staff, .badge.role.admin, .badge.role.moderator { color: var(--accent); background: var(--accent-soft); box-shadow: none; }
