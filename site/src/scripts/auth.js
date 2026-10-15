@@ -179,8 +179,9 @@ if (accountView) {
   const fill = (user) => {
     accountUser = user;
     $("acct-handle").textContent = "@" + user.handle;
-    $("acct-email").textContent = user.email + (user.emailVerified ? "" : " · unconfirmed");
+    $("acct-email").textContent = user.email;
     $("acct-role").textContent = user.role;
+    document.dispatchEvent(new CustomEvent("account:ready", { detail: user }));
     $("acct-profile-link").href = withBase("/u/?handle=" + encodeURIComponent(user.handle));
     $("verification-wrap").hidden = user.emailVerified;
     $("f-displayName").value = user.displayName || "";
