@@ -14,9 +14,10 @@ export function detectPlatform(ua, maxTouchPoints = 0) {
   }
   if (/CrOS/i.test(value)) return { os: "", reason: "chromeos" };
   if (/Linux|X11/i.test(value)) {
-    return /aarch64|arm64|armv\d|\barm\b/i.test(value)
-      ? { os: "", reason: "arm-linux" }
-      : { os: "linux", reason: "" };
+    // 64-bit ARM Linux has Studio packages; only 32-bit ARM has none.
+    return /aarch64|arm64/i.test(value) || !/armv\d|\barm\b/i.test(value)
+      ? { os: "linux", reason: "" }
+      : { os: "", reason: "arm-linux" };
   }
   return { os: "", reason: "unknown" };
 }

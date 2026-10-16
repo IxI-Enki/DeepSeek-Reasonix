@@ -48,7 +48,7 @@ test("ChromeOS gets no recommendation, not the Linux .deb", () => {
 });
 
 test("Linux on ARM gets no amd64 recommendation", () => {
-  assert.deepEqual(detectPlatform(UA.linuxArm), { os: "", reason: "arm-linux" });
+  assert.deepEqual(detectPlatform(UA.linuxArm), { os: "linux", reason: "" });
   assert.deepEqual(detectPlatform(UA.linuxArm32), { os: "", reason: "arm-linux" });
   assert.equal(detectDesktopOS(UA.linux), "linux");
 });

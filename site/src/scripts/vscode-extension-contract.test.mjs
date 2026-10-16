@@ -8,7 +8,7 @@ test("homepage presents one VS Code extension through both registries", async ()
   const page = await source("../pages/index.astro");
 
   assert.match(page, /data-pane="vscode"/);
-  assert.match(page, /data-pane="desktop"[\s\S]*data-pane="npm"[\s\S]*data-pane="brew"[\s\S]*data-pane="vscode"/);
+  assert.match(page, /data-pane="npm"[\s\S]*data-pane="brew"[\s\S]*data-pane="vscode"/);
   assert.match(page, /Editor extension[\s\S]*编辑器扩展/);
   assert.match(page, /More ways to use Reasonix:[\s\S]*更多使用方式：/);
   assert.match(page, /Local Web UI:[\s\S]*reasonix serve[\s\S]*本地 Web UI：/);

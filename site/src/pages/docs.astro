@@ -106,6 +106,18 @@ const goVer = 'latest';
           <strong>Linux</strong>
           <span><span class="l-en">.deb · amd64</span><span class="l-zh">.deb · amd64</span> · <span data-release-version="studio">latest</span></span>
         </a>
+        <a class="desktop-download" href={studioReleases} data-studio-asset="ReasonixStudio-linux-amd64.rpm" data-studio-optional hidden>
+          <strong>Linux</strong>
+          <span><span class="l-en">.rpm · amd64</span><span class="l-zh">.rpm · amd64</span> · <span data-release-version="studio">latest</span></span>
+        </a>
+        <a class="desktop-download" href={studioReleases} data-studio-asset="ReasonixStudio-linux-arm64.deb" data-studio-optional hidden>
+          <strong>Linux</strong>
+          <span><span class="l-en">.deb · arm64</span><span class="l-zh">.deb · arm64</span> · <span data-release-version="studio">latest</span></span>
+        </a>
+        <a class="desktop-download" href={studioReleases} data-studio-asset="ReasonixStudio-linux-arm64.rpm" data-studio-optional hidden>
+          <strong>Linux</strong>
+          <span><span class="l-en">.rpm · arm64</span><span class="l-zh">.rpm · arm64</span> · <span data-release-version="studio">latest</span></span>
+        </a>
       </div>
 
       <h2 id="install"><span class="l-en">Command line (2.x)</span><span class="l-zh">命令行（2.x）</span></h2>
@@ -136,7 +148,8 @@ brew install esengine/reasonix/reasonix</div>
       </div>
       <div class="callout"><span class="ico">!</span><span><span class="l-en">To install the legacy <strong>0.x</strong> version, pin it explicitly with <code>npm i -g reasonix@0.53.2</code>. The commands above and Homebrew install the Reasonix 2.x command line. Coming from 1.x? See <a href={`${repo}/blob/studio/docs/MIGRATING.md`}>Moving from 1.x to 2.x</a>.</span><span class="l-zh">如需安装 legacy <strong>0.x</strong> 版本,请显式 pin: <code>npm i -g reasonix@0.53.2</code>。上方命令与 Homebrew 安装的是 Reasonix 2.x 命令行。从 1.x 迁移请见 <a href={`${repo}/blob/studio/docs/MIGRATING.md`}>Moving from 1.x to 2.x</a>。</span></span></div>
 
-      <h2 id="desktop"><span class="l-en">Desktop app (1.x)</span><span class="l-zh">桌面端（1.x）</span></h2>
+      <details class="legacy-line" id="desktop">
+        <summary><span class="l-en">Previous line: desktop app 1.x — maintenance only (bug fixes, no new features)</span><span class="l-zh">上一代：桌面端 1.x —— 仅维护（只修缺陷，不加新功能）</span></summary>
       <div class="desktop-panel">
         <div class="desktop-panel-head">
           <span class="desktop-kicker"><span class="l-en">Native app · <span data-release-version="desktop">{goVer}</span></span><span class="l-zh">原生桌面端 · <span data-release-version="desktop">{goVer}</span></span></span>
@@ -182,6 +195,7 @@ brew install esengine/reasonix/reasonix</div>
         </ul>
       </div>
       <div class="callout"><span class="ico">!</span><span><span class="l-en"><strong>Recovery from desktop 1.38.7:</strong> if update reports <code>current executable is not inside a macOS .app bundle</code>, quit Reasonix, download the Apple Silicon, Intel, or Universal DMG above, and replace <code>/Applications/Reasonix.app</code>. This one-time full reinstall keeps Reasonix settings and sessions. Automatic updates resume from the repaired version.</span><span class="l-zh"><strong>桌面端 1.38.7 恢复：</strong>若更新提示 <code>current executable is not inside a macOS .app bundle</code>，请退出 Reasonix，下载上方 Apple Silicon、Intel 或 Universal DMG，并覆盖 <code>/Applications/Reasonix.app</code>。这次完整覆盖安装不会删除 Reasonix 的配置和会话；安装修复版后，后续版本可继续自动更新。</span></span></div>
+      </details>
       <h3 id="macos-quarantine"><span class="l-en">macOS quarantine warning</span><span class="l-zh">macOS 隔离属性提示</span></h3>
       <p><span class="l-en">Use this only when Reasonix was downloaded from the official site or GitHub release, moved to <code>/Applications</code>, and macOS still says the app cannot be opened, cannot be verified, or is damaged. This removes the quarantine flag that macOS attaches to downloaded apps.</span><span class="l-zh">仅在 Reasonix 来自官网或 GitHub Release、已经放入 <code>/Applications</code>,但 macOS 仍提示“无法打开”“无法验证开发者”或“应用已损坏”时使用。它会移除 macOS 给下载应用附加的隔离属性。</span></p>
       <div class="codeblock codeblock--copy"><button data-copy="sudo xattr -rd com.apple.quarantine /Applications/Reasonix.app">Copy</button><span class="c"># Quit Reasonix first, then run in Terminal.</span>

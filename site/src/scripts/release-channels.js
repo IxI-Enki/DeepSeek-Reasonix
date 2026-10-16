@@ -30,6 +30,9 @@ const STUDIO_ASSETS = [
 // it (or with a malformed one) is still a complete release.
 const STUDIO_OPTIONAL_ASSETS = [
   ["downloads", "ReasonixStudio-windows-arm64-installer.exe", "ReasonixStudio-windows-arm64-installer.exe"],
+  ["native_packages", "linux-amd64-rpm", "ReasonixStudio-linux-amd64.rpm"],
+  ["native_packages", "linux-arm64", "ReasonixStudio-linux-arm64.deb"],
+  ["native_packages", "linux-arm64-rpm", "ReasonixStudio-linux-arm64.rpm"],
 ];
 
 // Keep in lockstep with workers/crash-report CLI asset gate.

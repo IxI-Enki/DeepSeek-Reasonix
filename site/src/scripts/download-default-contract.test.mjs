@@ -74,10 +74,33 @@ test("the command line is never called 1.x or stable 1.x", () => {
 });
 
 test("platform line names the shipped builds", () => {
-  assert.match(home, /macOS \(Apple Silicon, Intel\) · Windows x64 · Linux amd64 \(\.deb\)/);
+  assert.match(home, /macOS \(Apple Silicon, Intel\) · Windows x64 · Linux amd64 and arm64 \(\.deb, \.rpm\)/);
 });
 
 test("docs Studio cards use a 2x2 grid and the 2.x kicker keeps its case", () => {
   assert.match(docs, /desktop-downloads desktop-downloads--two/);
   assert.match(home, /<span class="keep-case">2\.x<\/span>/);
+});
+
+test("the 1.x desktop line is the last tab and says it is maintenance only", () => {
+  const tabs = [...home.matchAll(/<button class="dl-tab[^"]*" id="download-tab-([a-z]+)"/g)].map((m) => m[1]);
+  assert.equal(tabs.at(-1), "desktop");
+  assert.match(tag(home, "download-tab-desktop"), /dl-tab--legacy/);
+  assert.match(tag(home, "download-tab-desktop") + home.slice(home.indexOf('id="download-tab-desktop"'), home.indexOf('id="download-tab-desktop"') + 400), /maintenance only/);
+  assert.doesNotMatch(home + docs, /stable 1\.x|稳定的 1\.x|稳定版 ?1\.x/i);
+});
+
+test("docs fold the 1.x download panel under a maintenance-only summary", () => {
+  assert.match(docs, /<details class="legacy-line" id="desktop">/);
+  assert.match(docs, /maintenance only/);
+});
+
+test("Studio offers the .rpm and arm64 Linux packages as optional markup", () => {
+  for (const name of ["linux-amd64.rpm", "linux-arm64.deb", "linux-arm64.rpm"]) {
+    for (const page of [home, docs]) {
+      const link = page.match(new RegExp(`<a[^>]*data-studio-asset="ReasonixStudio-${name.replace(/\./g, "\\.")}"[^>]*>`))?.[0] ?? "";
+      assert.match(link, /data-studio-optional/);
+      assert.match(link, /\bhidden\b/);
+    }
+  }
 });
