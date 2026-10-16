@@ -550,44 +550,6 @@ func pathStatus(dir string) PathStatus {
 
 func (s *Store) discoveredSkills() []Skill { return s.discover(s.discoverRoot) }
 
-func (s *Store) discover(scan func(discoveryRoot) []Skill) []Skill {
-	if s == nil || s.disableDiscovery {
-		return nil
-	}
-	var out []Skill
-	disabled := s.disabledSet()
-	for _, r := range s.roots() {
-		if r.Status != StatusOK {
-			continue
-		}
-		for _, sk := range scan(r) {
-			if disabled[config.SkillNameKey(sk.Name)] {
-				continue
-			}
-			if len(r.plugins) == 0 {
-				out = append(out, sk)
-				continue
-			}
-			for _, plugin := range r.plugins {
-				owned := sk
-				owned.Plugin = plugin
-				if r.forceSubagent {
-					owned.SlashPrefix = plugin + ":agent"
-				}
-				out = append(out, owned)
-			}
-		}
-	}
-	if !s.disableBuiltins {
-		for _, sk := range builtinSkills() {
-			if !disabled[config.SkillNameKey(sk.Name)] {
-				out = append(out, sk)
-			}
-		}
-	}
-	return out
-}
-
 func (s *Store) enabledSkills() []Skill {
 	byName := map[string]Skill{}
 	for _, sk := range s.discoveredSkills() {
@@ -970,7 +932,6 @@ func (s *Store) Create(name string, scope Scope) (string, error) {
 // <name>/SKILL.md skill, refusing to clobber an existing directory-layout or
 // legacy flat skill of the same name. Returns the written path.
 func (s *Store) CreateWithContent(name string, scope Scope, content string) (string, error) {
-	s.scans.drop()
 	defer s.scans.drop()
 	if !IsValidName(name) {
 		return "", fmt.Errorf("invalid skill name %q — use letters, digits, '_', '-', '.'", name)
@@ -1017,7 +978,6 @@ func (s *Store) CreateWithContent(name string, scope Scope, content string) (str
 // see Delete for why a mismatch must refuse rather than silently target the
 // wrong file.
 func (s *Store) UpdateContent(name string, scope Scope, content string) error {
-	s.scans.drop()
 	defer s.scans.drop()
 	if scope == ScopeBuiltin {
 		return fmt.Errorf("skill %q is built in and cannot be edited", name)
@@ -1102,7 +1062,6 @@ func (s *Store) validateMutablePath(path string, scope Scope) error {
 // at global scope, which would otherwise silently no-op against the wrong
 // file while a same-named project-scope shadow kept showing up in List().
 func (s *Store) Delete(name string, scope Scope) error {
-	s.scans.drop()
 	defer s.scans.drop()
 	if scope == ScopeBuiltin {
 		return fmt.Errorf("skill %q is built in and cannot be deleted", name)
