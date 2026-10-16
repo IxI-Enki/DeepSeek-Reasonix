@@ -1,7 +1,7 @@
 import { t } from "../i18n";
 import type { AgentPort } from "../port/port";
 import { Group } from "./Group";
-import { PeerMessages } from "./PeerMessages";
+import { PeersSwitch } from "./PeersSwitch";
 import { SubagentClaims } from "./SubagentClaims";
 import { WriteLease } from "./WriteLease";
 
@@ -16,9 +16,9 @@ export function SessionCoordination({ port, onChanged }: { port: AgentPort; onCh
       </Group>
       <Group id="peers"
         title={t("会话间消息（实验）")}
-        hint={t("同一台机器上的会话互相发文字。收到的文字先挂起，只有你批准才会交给模型；发出去的文字也要对方的用户批准。没有给模型用的工具，默认关闭。")}
+        hint={t("同一台机器上的会话互相发文字，由模型发送。收到的文字先挂起，只有你批准才会交给模型；发出去的文字也要对方的用户批准。默认关闭。")}
       >
-        <PeerMessages port={port} />
+        <PeersSwitch port={port} />
       </Group>
       <Group id="subagent-claims"
         title={t("子代理的写入范围")}

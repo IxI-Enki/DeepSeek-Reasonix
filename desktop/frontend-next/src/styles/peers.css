@@ -5,8 +5,3 @@
 .peerhead { min-width: 0; flex: 1 1 8em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: var(--w-reg) var(--fs-meta) var(--ui); color: var(--muted); }
 .peerbody { margin: 0; padding: 6px 8px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; border: 1px solid var(--hair); border-radius: var(--r-sm); background: var(--raised); font: var(--w-reg) var(--fs-ui) var(--ui); color: var(--text); max-height: 8.5em; }
 .peerbody[data-clamped] { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
-.peerform { display: grid; gap: 6px; }
-.peerfield { box-sizing: border-box; width: 100%; padding: 6px 8px; border: 1px solid var(--border); border-radius: var(--r-sm); background: var(--raised); color: var(--text); font: var(--w-reg) var(--fs-ui) var(--ui); }
-textarea.peerfield { min-height: 4.5em; resize: vertical; }
-.peerfield:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
-.peerform .acts { display: flex; justify-content: flex-end; margin: 0; }

@@ -227,7 +227,7 @@ export const SETTINGS: SettingEntry[] = [
   // one. The shared [browser] enabled key belongs to the 1.x command line.
   // The lease is built with the session and a rebuild adopts the one it holds, so
   // the save reaches only sessions opened afterwards; the handler rebuilds nothing.
-  { section: "tools", anchor: "peers", title: "会话间消息（实验）", scope: "machine", apply: "none", keywords: ["peer", "会话间", "消息", "发送", "批准", "挂起", "另一个会话"] },
+  { section: "tools", anchor: "peers", title: "会话间消息（实验）", scope: "machine", apply: "on-open", keywords: ["peer", "会话间", "消息", "发送", "批准", "挂起", "另一个会话", "list_peers", "send_peer_message"] },
   { section: "tools", anchor: "write-lease", title: "多个会话同时写一个项目", scope: "machine", apply: "on-open", keywords: ["lease", "写锁", "并行", "多会话", "乐观", "optimistic", "write_lease", "等待"] },
   { section: "tools", anchor: "subagent-claims", title: "子代理的写入范围", scope: "machine", apply: "runtime-rebuild", keywords: ["subagent", "子代理", "并发", "write_paths", "乐观", "optimistic", "写锁"] },
   { section: "tools", anchor: "browser-tools", title: "内置浏览器", scope: "machine", apply: "runtime-rebuild", keywords: ["browser", "网页", "chrome", "浏览器工具"] },
