@@ -22,8 +22,6 @@ import (
 
 const workspaceRecentMax = workspacelist.MaxPaths
 
-const codeIsolateBaseUnknown = "workspace.isolate_base_unknown"
-
 // AllowWorkspaceSwitch grants POST /workspace. It is off until a host asks for
 // it, and no config file can turn it on: a server reachable over the network
 // would otherwise let any client repoint the agent at any directory it can
@@ -77,9 +75,9 @@ func (s *Server) workspace(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		Path    string `json:"path"`
-		Isolate bool   `json:"isolate"`
-		Base    string `json:"base"`
+		Path     string             `json:"path"`
+		Isolate  bool               `json:"isolate"`
+		Worktree *worktreeSelection `json:"worktree,omitempty"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		badBody(w)
@@ -90,17 +88,44 @@ func (s *Server) workspace(w http.ResponseWriter, r *http.Request) {
 	defer s.bindMu.Unlock()
 
 	dir := strings.TrimSpace(body.Path)
+	published := false
+	if controllerHasActiveRuntimeWork(s.ctl()) {
+		writeErr(w, http.StatusConflict, busyErr("busy.change_workspace", "cannot change the workspace while active work or background jobs are running"))
+		return
+	}
+	if body.Worktree != nil && (!body.Isolate || body.Worktree.Ref == "" || body.Worktree.SourceRoot != s.ctl().WorkspaceRoot() || !emptyConversation(s.ctl())) {
+		refuse(w, http.StatusConflict, "workspace.worktree_stale", "start a new session in the source workspace before creating a worktree", nil)
+		return
+	}
 	if body.Isolate {
-		res, err := worktree.CreateFrom(r.Context(), workspaceRepo(s.ctl()), config.DeliveryWorktreeDir(), body.Base)
-		if errors.Is(err, worktree.ErrBaseUnknown) {
-			refuse(w, http.StatusUnprocessableEntity, codeIsolateBaseUnknown, err.Error(), nil)
-			return
+		ref := ""
+		if body.Worktree != nil {
+			ref = body.Worktree.Ref
 		}
+		res, err := worktree.CreateFrom(r.Context(), workspaceRepo(s.ctl()), config.DeliveryWorktreeDir(), ref)
 		if err != nil {
+			if errors.Is(err, worktree.ErrSourceUnknown) {
+				refuse(w, http.StatusConflict, "workspace.worktree_source_missing", "the source branch is no longer available; choose another branch", nil)
+				return
+			}
 			writeErr(w, http.StatusUnprocessableEntity, err)
 			return
 		}
+		repo := workspaceRepo(s.ctl())
+		defer func() {
+			if !published {
+				if err := worktree.DiscardUnpublished(context.WithoutCancel(r.Context()), repo, res); err != nil {
+					slog.Warn("retain unpublished worktree after rollback failure", "path", res.WorkspaceRoot, "err", err)
+				}
+			}
+		}()
 		dir = res.WorkspaceRoot
+		if body.Worktree != nil {
+			if err := control.CarryDraftAttachments(body.Worktree.SourceRoot, dir, body.Worktree.Attachments); err != nil {
+				writeErr(w, http.StatusUnprocessableEntity, err)
+				return
+			}
+		}
 	}
 	dir, err := resolveWorkspaceDir(dir)
 	if err != nil {
@@ -111,6 +136,7 @@ func (s *Server) workspace(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusConflict, err)
 		return
 	}
+	published = true
 	writeJSON(w, struct {
 		WorkspaceRoot string `json:"workspaceRoot"`
 	}{dir})
@@ -156,6 +182,18 @@ func (s *Server) switchWorkspaceLocked(ctx context.Context, dir string) error {
 		return fmt.Errorf("open %s: %w", dir, err)
 	}
 	newCtrl.EnableInteractiveApproval()
+	if cur.Posture().Defaulted {
+		newCtrl.ApplyDefaultPosture()
+	} else {
+		newCtrl.SetToolApprovalMode(cur.ToolApprovalMode())
+	}
+	newCtrl.SetPlanMode(cur.PlanMode())
+	if current, ok := cur.(*control.Controller); ok {
+		if err := newCtrl.SetModelMode(current.ModelMode()); err != nil {
+			newCtrl.Close()
+			return err
+		}
+	}
 	newCtrl.SetOnSessionRecovered(sessionLeaseRecoveryHandler(s.leases))
 
 	if err := addRememberedWorkspace(ctx, dir); err != nil {
@@ -311,6 +349,11 @@ func (s *Server) workspaceOptions(dir, ref string) boot.Options {
 	opts.WorkspaceRoot, opts.SessionDir = dir, SessionDirFor(dir)
 	if ctl := s.ctl(); ctl != nil {
 		opts.NativeSurfaces = ctl.NativeSurfaces()
+		opts.AgentPreset = ctl.AgentPreset()
+		if current, ok := ctl.(*control.Controller); ok {
+			effort := current.RuntimeSelection().Effort
+			opts.EffortOverride = &effort
+		}
 	}
 	return opts
 }

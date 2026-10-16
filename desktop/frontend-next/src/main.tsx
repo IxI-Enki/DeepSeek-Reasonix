@@ -41,6 +41,7 @@ import "./styles/treerows.css";
 import "./styles/workbench-changes.css";
 import "./styles/gitgraph.css";
 import "./styles/modelmenu.css";
+import "./styles/composer-menu.css";
 import "./styles/runsignals.css";
 import "./styles/toasts.css";
 import "./styles/overview.css";

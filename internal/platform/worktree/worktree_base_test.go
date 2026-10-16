@@ -35,7 +35,7 @@ func TestCreateFromBranchStartsFromThatBranchNotHead(t *testing.T) {
 	requireGit(t)
 	repo := twoBranches(t)
 	head := gitOut(t, repo, "rev-parse", "HEAD")
-	res, err := CreateFrom(context.Background(), opened(t, repo), testenv.TempDir(t), "feature")
+	res, err := CreateFrom(context.Background(), opened(t, repo), testenv.TempDir(t), "refs/heads/feature")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -43,7 +43,7 @@ func TestCreateFromBranchStartsFromThatBranchNotHead(t *testing.T) {
 		t.Fatalf("the worktree lacks the chosen branch's commit: %v", err)
 	}
 	want := gitOut(t, repo, "rev-parse", "feature")
-	if res.Head != want || res.Head == head || res.Base != "feature" {
+	if res.Head != want || res.Head == head {
 		t.Fatalf("result = %+v, want head %s from feature (HEAD was %s)", res, want, head)
 	}
 	if got := gitOut(t, res.WorktreeRoot, "rev-parse", "HEAD"); got != want {
@@ -64,9 +64,6 @@ func TestCreateFromEmptyBaseIsTheCommittedHead(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(res.WorktreeRoot, "feature.txt")); !os.IsNotExist(err) {
 		t.Fatalf("an empty base must mean HEAD, stat err = %v", err)
 	}
-	if res.Base != "" {
-		t.Fatalf("base = %q, want none", res.Base)
-	}
 }
 
 func TestCreateFromUnknownBaseCreatesNothing(t *testing.T) {
@@ -74,10 +71,10 @@ func TestCreateFromUnknownBaseCreatesNothing(t *testing.T) {
 	repo := twoBranches(t)
 	managed := testenv.TempDir(t)
 	branches := gitOut(t, repo, "branch", "--list")
-	for _, name := range []string{"nope", "--help", "refs/heads/feature", "feature^", "HEAD~1", "feature\x00x", "-x", "feat*"} {
+	for _, name := range []string{"nope", "--help", "refs/heads/missing", "feature^", "HEAD~1", "feature\x00x", "-x", "feat*"} {
 		_, err := CreateFrom(context.Background(), opened(t, repo), managed, name)
-		if !errors.Is(err, ErrBaseUnknown) {
-			t.Errorf("base %q: err = %v, want ErrBaseUnknown", name, err)
+		if !errors.Is(err, ErrSourceUnknown) {
+			t.Errorf("base %q: err = %v, want ErrSourceUnknown", name, err)
 		}
 	}
 	if entries, _ := os.ReadDir(managed); len(entries) != 0 {
@@ -93,11 +90,11 @@ func TestCreateFromRemoteTrackingBranch(t *testing.T) {
 	repo := twoBranches(t)
 	sha := gitOut(t, repo, "rev-parse", "feature")
 	gitOut(t, repo, "update-ref", "refs/remotes/origin/release", sha)
-	res, err := CreateFrom(context.Background(), opened(t, repo), testenv.TempDir(t), "origin/release")
+	res, err := CreateFrom(context.Background(), opened(t, repo), testenv.TempDir(t), "refs/remotes/origin/release")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.Head != sha || res.Base != "origin/release" {
+	if res.Head != sha {
 		t.Fatalf("result = %+v, want head %s", res, sha)
 	}
 }
@@ -107,7 +104,7 @@ func TestCreateFromBranchCheckedOutElsewhereIsFine(t *testing.T) {
 	repo := twoBranches(t)
 	other := filepath.Join(testenv.TempDir(t), "other")
 	gitOut(t, repo, "worktree", "add", other, "feature")
-	if _, err := CreateFrom(context.Background(), opened(t, repo), testenv.TempDir(t), "feature"); err != nil {
+	if _, err := CreateFrom(context.Background(), opened(t, repo), testenv.TempDir(t), "refs/heads/feature"); err != nil {
 		t.Fatalf("a branch held by another worktree is only a starting point: %v", err)
 	}
 }
@@ -119,11 +116,11 @@ func TestCreateFromReportsDirtyOnlyForTheCheckedOutBranch(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(repo, "README.md"), []byte("uncommitted\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	same, err := CreateFrom(context.Background(), opened(t, repo), testenv.TempDir(t), current)
+	same, err := CreateFrom(context.Background(), opened(t, repo), testenv.TempDir(t), "refs/heads/"+current)
 	if err != nil {
 		t.Fatal(err)
 	}
-	other, err := CreateFrom(context.Background(), opened(t, repo), testenv.TempDir(t), "feature")
+	other, err := CreateFrom(context.Background(), opened(t, repo), testenv.TempDir(t), "refs/heads/feature")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -144,7 +141,7 @@ func TestCreateFromChecksTheSubdirectoryAgainstTheBase(t *testing.T) {
 	}
 	gitOut(t, repo, "add", "app")
 	gitOut(t, repo, "commit", "-m", "app")
-	if _, err := CreateFrom(context.Background(), opened(t, sub), testenv.TempDir(t), "feature"); err == nil || errors.Is(err, ErrBaseUnknown) {
+	if _, err := CreateFrom(context.Background(), opened(t, sub), testenv.TempDir(t), "refs/heads/feature"); err == nil || errors.Is(err, ErrSourceUnknown) {
 		t.Fatalf("feature has no app/ directory, err = %v", err)
 	}
 	res, err := CreateFrom(context.Background(), opened(t, sub), testenv.TempDir(t), "")

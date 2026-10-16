@@ -14,10 +14,15 @@ const CONTROLS = [".studio-mode-picker", ".studio-branch", ".model-picker", ".co
 
 const browser = await chromium.launch();
 try {
-  for (const scheme of ["light", "dark"]) {
+  for (const scheme of ["light", "dark"]) for (const turns of [2, 0]) {
+    const context = `${scheme}, ${turns ? "existing conversation" : "new conversation"}`;
+    const url = new URL(BASE);
+    url.searchParams.set("turns", String(turns));
     const page = await browser.newPage({ colorScheme: scheme, viewport: { width: 1100, height: 760 } });
-    await page.goto(BASE, { waitUntil: "networkidle" });
-    await page.waitForSelector(".compose .studio-branch");
+    await page.goto(url.href, { waitUntil: "networkidle" });
+    await page.waitForSelector(turns ? ".compose .studio-branch" : ".compose .worktree-trigger");
+    const inline = await page.locator(".compose .studio-branch").first().evaluate((e) => !!e.closest(".turntools"));
+    check(`${context}: workspace control stays in the toolbar`, inline);
     const seen = [];
     for (const sel of CONTROLS) {
       const el = page.locator(`.compose ${sel}`.replace(".compose .compose", ".compose")).first();
@@ -26,11 +31,16 @@ try {
       await page.waitForTimeout(300);
       seen.push([sel, await el.evaluate((e) => ({ radius: getComputedStyle(e).borderRadius, bg: getComputedStyle(e).backgroundColor }))]);
     }
-    check(`${scheme}: the hovered controls were all found`, seen.length === CONTROLS.length, `${seen.length} of ${CONTROLS.length}`);
+    check(`${context}: the hovered controls were all found`, seen.length === CONTROLS.length, `${seen.length} of ${CONTROLS.length}`);
     const radii = new Set(seen.map(([, v]) => v.radius));
     const grounds = new Set(seen.map(([, v]) => v.bg));
-    check(`${scheme}: one corner radius across the row`, radii.size === 1, [...radii].join(" / "));
-    check(`${scheme}: one hover ground across the row`, grounds.size === 1, [...grounds].join(" / "));
+    check(`${context}: one corner radius across the row`, radii.size === 1, [...radii].join(" / "));
+    check(`${context}: one hover ground across the row`, grounds.size === 1, [...grounds].join(" / "));
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto(url.href, { waitUntil: "networkidle" });
+    const chip = page.locator(turns ? ".compose .studio-branch" : ".compose .worktree-trigger").first();
+    await chip.click();
+    check(`${context}: a narrow-pane pointer click opens the workspace menu`, await chip.getAttribute("aria-expanded") === "true");
     await page.close();
   }
 } finally {

@@ -3,6 +3,21 @@ import type { KeptText } from "./attachment";
 import type { ChangeDiff, GitHistory, StageRequest, WorkspaceChange, WorkspaceChanges, WorkspaceGit, WorkspaceBranches } from "./workspace";
 import { MockFeedback } from "./mock_feedback";
 
+export function mockWorkspaces(root: string): import("./workspace").WorkspaceInfo {
+  return { current: root, canSwitch: true, canIsolate: true, recents: [
+    { path: "~/projects/reasonix-site", name: "reasonix-site" },
+    { path: "~/work/notes", name: "notes" },
+  ] };
+}
+
+export function mockWorktreeSources(root: string, branch: string): import("./workspace").WorktreeSources {
+  return { available: branch !== "reasonix/delivery-demo", sourceRoot: root, sources: [
+    { ref: "refs/heads/main", name: "main", remote: false, current: branch === "main" },
+    { ref: "refs/heads/studio", name: "studio", remote: false, current: branch === "studio" },
+    { ref: "refs/remotes/origin/main", name: "origin/main", remote: true, current: false },
+  ] };
+}
+
 export class MockWorkspace extends MockFeedback {
   opensFiles() { return false; }
   async openFile() {}

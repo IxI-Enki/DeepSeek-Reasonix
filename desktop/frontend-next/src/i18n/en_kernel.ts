@@ -3,6 +3,8 @@
 // code adds one here. i18n.test.ts is what stops one from being forgotten.
 
 export const EN_KERNEL: Record<string, string> = {
+  "起始分支已不存在，请重新选择分支": "The source branch no longer exists. Choose another branch",
+  "会话或工作目录已改变，请新建会话后重新选择 worktree": "The session or workspace changed. Start a new session to select a worktree",
   "请先打开一个本机会话，再读取本机设置": "Open a local session to read this machine’s settings",
   "未配置文件访问策略，无法执行此文件操作。": "File access policy is not configured; this file operation cannot run.",
   "该路径指向网络上的另一台机器，不在当前工作区内。文件工具只按路径写法拒绝它，不会去访问；工作区本身在网络共享上时，其下的路径可用": "That path names another machine on the network and is outside this workspace. File tools refuse it by its spelling and never look it up; paths below a workspace that is itself on a network share are allowed",
@@ -393,7 +395,6 @@ export const EN_KERNEL: Record<string, string> = {
   "{model} 的价格必须是不小于 0 的数字，并选择货币": "The price for {model} must be a number not below 0, with a currency chosen",
   "{model} 不在已选模型中，未保存价格": "{model} is not one of the selected models, so no price was saved",
   "这台服务器不支持切换工作区": "This server cannot switch workspaces",
-  "没有找到这个分支，没有创建隔离副本": "That branch was not found, so no isolated copy was created",
   "不存在该预设": "There is no such preset",
   "没有找到这个模型，默认模型没有改动": "That model was not found, so the default model is unchanged",
   "这个窗格的默认模型由模型所在的那台机器决定，请在本机的窗格里设置": "This pane's default model is decided by the machine its models come from; set it from a pane on this machine",

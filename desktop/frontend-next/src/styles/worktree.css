@@ -1,0 +1,28 @@
+.worktree-trigger .lb { max-width: 230px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
+:root .compose .mode.worktree-trigger[data-on] { color: var(--brand); background: var(--brand-wash) }
+:root .compose .mode.worktree-trigger[data-on] .lb, :root .compose .mode.worktree-trigger[data-on] .studio-icon { color: var(--brand) }
+.worktree-panel { position: fixed; z-index: 1000; width: min(370px, calc(100vw / var(--zoom, 1) - 24px)); max-height: calc(100vh / var(--zoom, 1) - 24px); overflow: auto; padding: 18px; border: 1px solid var(--hair); border-radius: 20px; background: var(--float); color: var(--text); box-shadow: var(--shadow-float); font: 14px/1.5 var(--ui) }
+.worktree-heading { color: var(--muted); margin-bottom: 16px; font-size: 13px }
+.worktree-toggle { display: flex; align-items: center; gap: 12px; padding: 4px 0 18px; border-bottom: 1px solid var(--hair); margin-bottom: 8px }
+.worktree-toggle > div { flex: 1; min-width: 0 }
+.worktree-toggle span { font-size: 16px }
+.worktree-toggle small { display: block; color: var(--muted); font-size: 12px; margin-top: 4px }
+.worktree-panel .studio-icon { width: 20px; height: 20px; flex-shrink: 0 }
+.worktree-panel .sw { flex-shrink: 0; width: 42px; height: 24px; border-radius: 14px }
+.worktree-panel .sw i { width: 18px; height: 18px; margin-left: 3px }
+.worktree-panel .sw[aria-checked="true"] { background: var(--text) }
+.worktree-panel .sw[aria-checked="true"] i { transform: translateX(18px) }
+.worktree-row { display: flex; align-items: center; gap: 12px; min-height: 48px; width: 100%; padding: 8px 0; border: 0; border-radius: 6px; background: none; color: inherit; font: inherit; text-align: left }
+button.worktree-row:hover { background: var(--float-hi) }
+.worktree-value { color: var(--muted); margin-left: auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 170px }
+.worktree-note { border-top: 1px solid var(--hair); padding-top: 14px; margin: 6px 0 0; color: var(--muted); font-size: 12px }
+.worktree-panel input { width: 100%; border: 1px solid var(--hair); border-radius: 8px; padding: 9px 12px; background: var(--raised); color: inherit; font: inherit }
+.worktree-sources { max-height: 260px; overflow: auto; margin: 10px 0 }
+.worktree-sources > div > small { display: block; padding: 8px; color: var(--muted); font-size: 12px }
+.worktree-sources button { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 38px; border: 0; border-radius: 6px; background: none; color: inherit; padding: 8px; text-align: left; font: inherit }
+.worktree-sources button span { overflow-wrap: anywhere; flex: 1 }
+.worktree-sources button small { color: var(--muted); flex-shrink: 0 }
+.worktree-sources button:hover { background: var(--float-hi) }
+.worktree-sources button[aria-selected="true"] { color: var(--brand); background: var(--brand-wash) }
+.worktree-back { border: 0; background: none; color: var(--muted); padding: 6px; font: inherit }
+.worktree-panel :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px }

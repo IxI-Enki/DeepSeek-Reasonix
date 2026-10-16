@@ -131,7 +131,7 @@ func TestInspectRejectsUncommittedSelectedSubdirectoryWithoutGitMutation(t *test
 		t.Fatal(err)
 	}
 	got := Inspect(context.Background(), opened(t, untracked))
-	if got.Available || !strings.Contains(got.Reason, "committed HEAD") {
+	if got.Available || !strings.Contains(got.Reason, "source commit") {
 		t.Fatalf("availability = %+v", got)
 	}
 	after, _, err := runGit(context.Background(), opened(t, repo), "for-each-ref", "--format=%(refname)", "refs/heads/reasonix/delivery-")

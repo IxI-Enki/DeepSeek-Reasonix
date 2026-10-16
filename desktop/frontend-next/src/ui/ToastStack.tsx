@@ -20,7 +20,12 @@ export function ToastStack({ onFeedback, port, idle = false, look = {}, onLook =
     <div className="toasts" role="region" aria-label={t("通知")} style={at ? { bottom: at.bottom, right: at.right } : undefined}>
       {ask.node}
       {port && <UpdateReady port={port} idle={idle} />}
-      {toasts.map((toast) => (
+      {toasts.map((toast) => toast.tone === "note" ? (
+        <div className="toast note" role="status" key={toast.id}>
+          <span>{toast.text}</span>
+          <button data-action="toast.dismiss" data-target={String(toast.id)} onClick={() => dismissToast(toast.id)}>{t("知道了")}</button>
+        </div>
+      ) : (
         <div className="toast" role="alert" key={toast.id}>
           <span>{toast.text}</span>
           <button data-action="toast.report" onClick={() => { reportProblem(toast.text); onFeedback(); dismissToast(toast.id); }}>{t("报告此问题")}</button>

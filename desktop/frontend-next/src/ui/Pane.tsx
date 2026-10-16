@@ -372,13 +372,11 @@ function PaneView({ port, hub, rt, title, active, visible, sideHost, side, onFoc
     port.context().then(setCtx).catch(() => setCtx(null));
   }, [ready, port, roundTrips, folds, status?.sessionPath, running, pulse]);
 
-  // The sidebar has to hear about this pane's session twice: when the first
-  // turn mints the file (before that there is no row to show) and when the turn
-  // ends (that is when it has a generated title and a turn count). Without it a
-  // brand-new conversation only appeared in the tree once its pane was closed.
+  // Workspace preparation can move an empty pane before its first turn mints
+  // a transcript; the sidebar needs that root as well as later session updates.
   useEffect(() => {
     onSessionChanged();
-  }, [status?.sessionPath, running, onSessionChanged]);
+  }, [status?.workspaceRoot, status?.sessionPath, running, onSessionChanged]);
 
   // /status is the only source for background jobs and for settings the run does
   // not echo, so a live turn has to re-read it rather than infer from events.
@@ -594,7 +592,7 @@ function PaneView({ port, hub, rt, title, active, visible, sideHost, side, onFoc
         </div>
         {alert && <div className="cmpalert">{alert}</div>}
         {pill && <ChangedFilesPill changes={tree?.changes ?? []} onOpen={openChanges} />}
-        <Composer port={port} status={status} running={running} quote={quote} restore={restored} inject={inserted} focus={askFocus} onSubmit={submit} onChanged={refreshStatus} onError={notify} onSettings={onSettings} side={sideAsk} onSide={() => setSideAsk((on) => !on)} changeCount={changeCount} countElsewhere={pill} git={git} onTreeChanged={refreshTree} pulse={pulse} draftKey={draftKey(rt.host ?? "", rt.root, rt.sessionPath || status?.sessionPath || "")} />
+        <Composer port={port} fresh={ready && !rt.host && s.items.length === 0} status={status} running={running} quote={quote} restore={restored} inject={inserted} focus={askFocus} onSubmit={submit} onChanged={refreshStatus} onError={notify} onSettings={onSettings} side={sideAsk} onSide={() => setSideAsk((on) => !on)} changeCount={changeCount} countElsewhere={pill} git={git} onTreeChanged={refreshTree} pulse={pulse} draftKey={draftKey(rt.host ?? "", rt.root, rt.sessionPath || status?.sessionPath || "")} />
         <MeterRail
           tps={tps} trail={trail} running={running} speed={speed} metrics={s.metrics} ctx={ctx} mcp={mcp} compact={compact} cost={cost}
           wallet={wallet} hideAmounts={hideAmounts} tasks={rail.tasks} jobs={jobs} onSettings={onSettings}

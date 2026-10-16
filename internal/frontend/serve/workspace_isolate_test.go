@@ -2,6 +2,7 @@ package serve
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -65,7 +66,8 @@ func gitHead(t *testing.T, dir, ref string) string {
 
 func TestIsolateFromTheChosenBranch(t *testing.T) {
 	url, repoDir, built := isolateServer(t)
-	resp, err := http.Post(url+"/workspace", "application/json", strings.NewReader(`{"isolate":true,"base":"topic"}`))
+	body, _ := json.Marshal(map[string]any{"isolate": true, "worktree": worktreeSelection{Ref: "refs/heads/topic", SourceRoot: repoDir}})
+	resp, err := http.Post(url+"/workspace", "application/json", strings.NewReader(string(body)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -98,14 +100,15 @@ func TestIsolateWithoutBaseKeepsTheCommittedHead(t *testing.T) {
 }
 
 func TestIsolateWithUnknownBaseIsRefusedWithItsCode(t *testing.T) {
-	url, _, built := isolateServer(t)
-	resp, err := http.Post(url+"/workspace", "application/json", strings.NewReader(`{"isolate":true,"base":"nope"}`))
+	url, repoDir, built := isolateServer(t)
+	body, _ := json.Marshal(map[string]any{"isolate": true, "worktree": worktreeSelection{Ref: "refs/heads/nope", SourceRoot: repoDir}})
+	resp, err := http.Post(url+"/workspace", "application/json", strings.NewReader(string(body)))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer resp.Body.Close()
 	out, _ := io.ReadAll(resp.Body)
-	if resp.StatusCode != http.StatusUnprocessableEntity || reasonOf(t, out).Code != codeIsolateBaseUnknown {
+	if resp.StatusCode != http.StatusConflict || reasonOf(t, out).Code != "workspace.worktree_source_missing" {
 		t.Fatalf("POST /workspace = %d %s", resp.StatusCode, out)
 	}
 	if *built != "" {

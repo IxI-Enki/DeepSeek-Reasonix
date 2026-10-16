@@ -59,7 +59,7 @@ export function Policy({ port, status, onChanged, onBoundary }: Props) {
         <span className={apv === "yolo" ? "lb polrisk" : "lb"} data-display={label}>{label}</span>
         <span className="studio-control-chevron" aria-hidden="true">⌄</span>
       </button>
-      <div className="menu modemenu polmenu" role="group" aria-label={t("执行权限")} hidden={!open}>
+      <div className="menu modemenu polmenu composer-menu" role="group" aria-label={t("执行权限")} hidden={!open}>
         <div className="studio-policy-head"><b>{t("执行权限")}</b><small>{t("当前任务")}</small></div>
         <div className="studio-policy-primary">
           {APPROVALS.map(([value, name, note]) => (

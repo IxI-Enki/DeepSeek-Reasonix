@@ -135,7 +135,7 @@ it("loads deferred panels and the branch chip when the first status fails", asyn
   for (const name of deferredReads) expect(pane.calls[name], name).toHaveBeenCalledTimes(1);
   expect(pane.port.branchReads).toHaveBeenCalled();
   expect(pane.calls.changes).toHaveBeenCalled();
-  await screen.findByLabelText("当前 Git 分支：rescue");
+  expect((await screen.findByRole("button", { name: "配置工作目录" })).textContent).toContain("rescue");
   pane.send({ kind: "turn_done" });
   await waitFor(() => expect(pane.calls.queue).toHaveBeenCalledTimes(2));
   expect(pane.calls.models).toHaveBeenCalledTimes(1);

@@ -328,6 +328,7 @@ export const EN: Record<string, string> = {
 
   // ── 会话树 ───────────────────────────────────────────────────────
   "新会话": "New session",
+  "标签数已到上限 {n}，已把「{title}」从标签栏收起，对话仍在列表里。": "The open-session limit ({n}) was reached, so \"{title}\" was folded out of the tab bar. The conversation is still in the list.",
   "打开项目文件夹": "Open project folder",
   "新会话 {n}": "New session {n}",
   "从左栏选择，或在当前文件夹新建": "Pick one on the left, or start a new one in this folder",

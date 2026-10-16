@@ -1,0 +1,2 @@
+- 新增：设置了“同时保留的会话标签数”后，窗口因满额收起某个会话时会提示是哪一个，并说明对话仍在列表里（默认不限制，不会触发）。关联 #13419。
+- Added: when the open-session limit you set makes the window fold a session out of the tab bar, a note names it and says it is still in the list (off by default). Refs #13419.

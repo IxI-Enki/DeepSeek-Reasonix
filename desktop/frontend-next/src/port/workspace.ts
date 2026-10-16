@@ -109,6 +109,25 @@ export interface WorkspaceInfo {
   isolated?: boolean;
 }
 
+export interface WorktreeSource {
+  ref: string;
+  name: string;
+  remote: boolean;
+  current: boolean;
+}
+
+export interface WorktreeSources {
+  available: boolean;
+  sourceRoot: string;
+  sources: WorktreeSource[];
+}
+
+export interface WorktreeSelection {
+  ref: string;
+  sourceRoot: string;
+  attachments?: string[];
+}
+
 export interface CommitFile {
   path: string;
   // git raw status letter: "A", "M", "D", "T".

@@ -2,7 +2,9 @@ import { type Dispatch, type RefObject, type SetStateAction, useCallback, useRef
 import type { HubPort, RuntimeView } from "../port/hub";
 import type { AgentPort } from "../port/port";
 import type { PaneReport } from "./Pane";
+import { t } from "../i18n";
 import { openSessionLimit } from "../state/prefs";
+import { pushNote } from "../state/toasts";
 import type { SessionSwitch } from "./sessionswitch";
 
 interface Placed {
@@ -58,7 +60,14 @@ export function useOpenPane({ hub, runtimes, panePorts, active, reportsRef, runs
       const reusable = atCapacity && req.sessionPath
         ? idle.find((rt) => rt.root === req.root && panePorts.has(rt.id))
         : undefined;
+      // The window folds on its own here, so it says which conversation left the
+      // tab bar. A pane with no conversation in it has nothing to say about.
+      const folded = (rt: RuntimeView) => {
+        if (!rt.sessionPath && !reportsRef.current[rt.id]?.status?.sessionPath) return;
+        pushNote(t("标签数已到上限 {n}，已把「{title}」从标签栏收起，对话仍在列表里。", { n: limit, title: reportsRef.current[rt.id]?.title?.trim() || t("新会话") }));
+      };
       if (reusable && req.sessionPath) {
+        folded(reusable);
         await panePorts.get(reusable.id)?.resume(req.sessionPath);
         setTakeover((prev) => ({ ...prev, [reusable.id]: (prev[reusable.id] ?? 0) + 1 }));
         return { id: reusable.id, changed: true };
@@ -69,6 +78,7 @@ export function useOpenPane({ hub, runtimes, panePorts, active, reportsRef, runs
       let retired = "";
       if (atCapacity && idle[0]) {
         retired = idle[0].id;
+        folded(idle[0]);
         await hub.close(retired);
       }
       const rt = await hub.open(req);

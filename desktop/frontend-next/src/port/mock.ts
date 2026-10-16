@@ -4,15 +4,13 @@ import { approvalKind } from "./mock_approval";
 import { HttpError } from "./port";
 import type { AccountState, AgentPort, Completion, CompletionItem, DeviceGrant, StudioLogs, VersionHub, VersionNotes, ApprovalMode, ApprovalVerdict, Checkpoint, RewindPlan, RewindResult, RewindUndo, RewindScope, HistoryMessage, HostTodo, BrowserTab, ModelEntry, Preset, ProviderSetup, RoleAssignments, RoleOverride, SessionEntry, SessionStatus, WalletReading, MemoryCatalog, MemoryEdit, UsageReport, MemoryEntry, WorkspaceInfo, Attachment, DroppedRef, Queue, QueueItem, Queued, ChipCall, NotifyPrefs, TrayPrefs, UsageQuery } from "./port";
 import type { ExecutionGraphRead, TrajectoryRead, WireEvent } from "./wire";
-import { MockWorkspace } from "./mock_workspace";
+import { MockWorkspace, mockWorkspaces, mockWorktreeSources } from "./mock_workspace";
 import { SCRIPT, mockMsgIndex, mockTurnStart } from "./fixture";
 import { MockExecutionHold, mockExecutionGraph } from "./mock_graph";
 import { mockStorage, mockStoragePlan } from "./mock_storage";
 import { MEMORIES } from "./mock_memory";
 import { mockModels } from "./mock_models";
 import { mockUsage } from "./mock_usage";
-
-
 
 export class MockPort extends MockWorkspace implements AgentPort {
   private listeners = new Set<(ev: WireEvent) => void>();
@@ -227,15 +225,7 @@ export class MockPort extends MockWorkspace implements AgentPort {
   async accountLogout(): Promise<void> {}
 
   async workspaces(): Promise<WorkspaceInfo> {
-    return {
-      current: this.state.workspaceRoot ?? "",
-      canSwitch: true,
-      canIsolate: true,
-      recents: [
-        { path: "~/projects/reasonix-site", name: "reasonix-site" },
-        { path: "~/work/notes", name: "notes" },
-      ],
-    };
+    return mockWorkspaces(this.state.workspaceRoot ?? "");
   }
 
   async setWorkspace(path: string) {
@@ -244,8 +234,13 @@ export class MockPort extends MockWorkspace implements AgentPort {
     await this.newSession();
   }
 
-  async isolateWorkspace(_base?: string) {
+  async worktreeSources(): Promise<import("./workspace").WorktreeSources> {
+    return mockWorktreeSources(this.state.workspaceRoot ?? "", this.branchState.branch);
+  }
+
+  async isolateWorkspace(_selection?: import("./workspace").WorktreeSelection) {
     await this.setWorkspace((this.state.workspaceRoot ?? "") + " (隔离副本)");
+    this.branchState.branch = "reasonix/delivery-demo";
   }
 
   async openInEditor() {

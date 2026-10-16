@@ -448,7 +448,8 @@ export interface AgentPort {
   // Rebuilds the whole runtime against another folder. The conversation does
   // not come along, so the caller has to reload the transcript afterwards.
   setWorkspace(path: string): Promise<void>;
-  isolateWorkspace(base?: string): Promise<void>;
+  isolateWorkspace(selection?: import("./workspace").WorktreeSelection): Promise<void>;
+  worktreeSources(): Promise<import("./workspace").WorktreeSources>;
   // The native folder picker, or "" where there is none (a browser tab) or
   // when the user cancelled. Only the shell can open one.
   // The native folder picker: the chosen path, "" when the user cancelled, and

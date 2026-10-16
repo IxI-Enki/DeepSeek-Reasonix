@@ -45,7 +45,7 @@ type Candidate struct {
 // TakeSnapshot records the current state of repo's workspace, resolved when
 // the workspace opened, as a dangling commit.
 func TakeSnapshot(ctx context.Context, repo gitcmd.Repo) (Snapshot, error) {
-	info, err := inspect(ctx, repo, "")
+	info, err := inspect(ctx, repo)
 	if err != nil {
 		return Snapshot{}, err
 	}

@@ -22,6 +22,7 @@ const rt = { id: "p1", root: "/w", name: "w" } as RuntimeView;
 
 function open() {
   const port = new MockPort();
+  vi.spyOn(port, "history").mockResolvedValue([{ role: "user", content: "Existing conversation" }]);
   let emit: (ev: WireEvent) => void = () => {};
   const subscribe = port.subscribe.bind(port);
   vi.spyOn(port, "subscribe").mockImplementation((onEvent, onGap, bootstrap) => {

@@ -24,10 +24,6 @@ const (
 	gitWorktreeAddTimeout = 5 * time.Minute
 )
 
-// ErrBaseUnknown reports a base that names no local or remote-tracking branch
-// of the repository.
-var ErrBaseUnknown = errors.New("worktree: base branch not found")
-
 // Availability describes whether a project can be isolated with Git worktree.
 type Availability struct {
 	Available   bool   `json:"available"`
@@ -43,7 +39,6 @@ type Result struct {
 	WorktreeRoot  string `json:"worktreeRoot"`
 	SourceRoot    string `json:"sourceRoot"`
 	Branch        string `json:"branch"`
-	Base          string `json:"base,omitempty"`
 	Head          string `json:"head"`
 	SourceDirty   bool   `json:"sourceDirty"`
 }
@@ -52,13 +47,12 @@ type inspection struct {
 	Availability
 	repo   gitcmd.Repo // pinned at the work tree root
 	head   string
-	base   string // the branch head came from; empty for the committed HEAD
 	prefix string
 }
 
 // Inspect checks Git and repository prerequisites without changing state.
 func Inspect(ctx context.Context, repo gitcmd.Repo) Availability {
-	info, err := inspect(ctx, repo, "")
+	info, err := inspect(ctx, repo)
 	if err != nil {
 		return Availability{Available: false, Reason: err.Error()}
 	}
@@ -74,12 +68,10 @@ func Create(ctx context.Context, repo gitcmd.Repo, managedRoot string) (Result, 
 	return CreateFrom(ctx, repo, managedRoot, "")
 }
 
-// CreateFrom is Create with the new branch based on base: a local branch, or a
-// remote-tracking one such as origin/main, resolved by Git to the commit it
-// names. An empty base is the committed HEAD. Naming no branch is
-// ErrBaseUnknown and creates nothing.
-func CreateFrom(ctx context.Context, repo gitcmd.Repo, managedRoot, base string) (Result, error) {
-	info, err := inspect(ctx, repo, base)
+// CreateFrom starts an independent branch at a local or remote-tracking ref.
+// An empty ref retains Create's committed-HEAD behavior.
+func CreateFrom(ctx context.Context, repo gitcmd.Repo, managedRoot, ref string) (Result, error) {
+	info, err := inspectFrom(ctx, repo, ref)
 	if err != nil {
 		return Result{}, err
 	}
@@ -146,7 +138,6 @@ func CreateFrom(ctx context.Context, repo gitcmd.Repo, managedRoot, base string)
 			WorktreeRoot:  worktreeRoot,
 			SourceRoot:    info.RepoRoot,
 			Branch:        branch,
-			Base:          info.base,
 			Head:          info.head,
 			SourceDirty:   info.SourceDirty,
 		}, nil
@@ -177,7 +168,12 @@ func IsManagedPath(path, managedRoot string) bool {
 	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
-func inspect(ctx context.Context, repo gitcmd.Repo, base string) (inspection, error) {
+func inspect(ctx context.Context, repo gitcmd.Repo) (inspection, error) {
+	return inspectFrom(ctx, repo, "")
+}
+
+func inspectFrom(ctx context.Context, repo gitcmd.Repo, ref string) (inspection, error) {
+	ref = strings.TrimSpace(ref)
 	workspaceRoot := strings.TrimSpace(repo.Dir)
 	if workspaceRoot == "" {
 		return inspection{}, errors.New("project folder is required")
@@ -196,17 +192,29 @@ func inspect(ctx context.Context, repo gitcmd.Repo, base string) (inspection, er
 		return inspection{}, fmt.Errorf("project folder is not inside a Git repository: %w", gitcmd.ErrNotRepository)
 	}
 	top := repo.Top()
-	head, _, err := runGit(ctx, top, "rev-parse", "--verify", "HEAD")
+	if ref == "" {
+		ref = "HEAD"
+	} else if ref != "HEAD" {
+		sources, err := Sources(ctx, repo)
+		if err != nil {
+			return inspection{}, err
+		}
+		found := false
+		for _, source := range sources {
+			found = found || source.Ref == ref
+		}
+		if !found {
+			return inspection{}, fmt.Errorf("%w: %s", ErrSourceUnknown, ref)
+		}
+	}
+	head, _, err := runGit(ctx, top, "rev-parse", "--verify", "--end-of-options", ref+"^{commit}")
 	if err != nil || strings.TrimSpace(head) == "" {
+		if ref != "HEAD" {
+			return inspection{}, fmt.Errorf("%w: %s", ErrSourceUnknown, ref)
+		}
 		return inspection{}, errors.New("the Git repository needs an initial commit before a worktree can be created")
 	}
 	head = strings.TrimSpace(head)
-	based := strings.TrimSpace(base)
-	if based != "" {
-		if head, err = resolveBase(ctx, top, based); err != nil {
-			return inspection{}, err
-		}
-	}
 	prefix, _, err := runGit(ctx, repo, "rev-parse", "--show-prefix")
 	if err != nil {
 		return inspection{}, fmt.Errorf("resolve selected project path inside repository: %w", err)
@@ -215,11 +223,10 @@ func inspect(ctx context.Context, repo gitcmd.Repo, base string) (inspection, er
 	if prefix != "" {
 		objectType, _, objectErr := runGit(ctx, top, "cat-file", "-t", head+":"+strings.TrimSuffix(prefix, "/"))
 		if objectErr != nil || strings.TrimSpace(objectType) != "tree" {
-			return inspection{}, errors.New("the selected project folder is not present in the committed HEAD; commit it before creating a worktree")
+			return inspection{}, errors.New("the selected project folder is not present in the source commit; choose a branch containing it")
 		}
 	}
 	branch, _, _ := runGit(ctx, top, "symbolic-ref", "--quiet", "--short", "HEAD")
-	branch = strings.TrimSpace(branch)
 	status, _, statusErr := runGit(ctx, top, "status", "--porcelain=v1", "--untracked-files=normal")
 	if statusErr != nil {
 		return inspection{}, fmt.Errorf("inspect Git working tree: %w", statusErr)
@@ -228,12 +235,11 @@ func inspect(ctx context.Context, repo gitcmd.Repo, base string) (inspection, er
 		Availability: Availability{
 			Available:   true,
 			RepoRoot:    top.WorkTree,
-			Branch:      branch,
-			SourceDirty: strings.TrimSpace(status) != "" && (based == "" || based == branch),
+			Branch:      strings.TrimSpace(branch),
+			SourceDirty: strings.TrimSpace(status) != "" && (ref == "HEAD" || ref == "refs/heads/"+strings.TrimSpace(branch)),
 		},
 		repo:   top,
 		head:   head,
-		base:   based,
 		prefix: prefix,
 	}, nil
 }
@@ -316,20 +322,4 @@ func stderrSuffix(stderr string) string {
 		stderr = stderr[:max] + "…"
 	}
 	return ": " + stderr
-}
-
-// resolveBase turns a branch name into the commit it points at. show-ref
-// --verify accepts only an exact ref, so a name can never be read as an option
-// or as a revision expression such as feature^ or HEAD~1.
-func resolveBase(ctx context.Context, top gitcmd.Repo, name string) (string, error) {
-	if strings.ContainsAny(name, "\x00\n") {
-		return "", ErrBaseUnknown
-	}
-	for _, ref := range []string{"refs/heads/" + name, "refs/remotes/" + name} {
-		out, _, err := runGit(ctx, top, "show-ref", "--verify", "--hash", ref)
-		if sha := strings.TrimSpace(out); err == nil && sha != "" {
-			return sha, nil
-		}
-	}
-	return "", fmt.Errorf("%w: %q", ErrBaseUnknown, name)
 }

@@ -6,6 +6,8 @@ import { useSyncExternalStore } from "react";
 export interface Toast {
   id: number;
   text: string;
+  // A note tells the person what the window did on its own; it is not a failure.
+  tone?: "note";
 }
 
 export const MAX_TOASTS = 3;
@@ -23,6 +25,12 @@ const publish = (next: readonly Toast[]) => {
 export function pushToast(text: string): void {
   if (!text.trim() || toasts.some((toast) => toast.text === text)) return;
   publish([...toasts, { id: ++serial, text }].slice(-MAX_TOASTS));
+}
+
+/** Adds a note about something the window did by itself: drawn calmly, no report button, never takes focus. */
+export function pushNote(text: string): void {
+  if (!text.trim() || toasts.some((toast) => toast.text === text)) return;
+  publish([...toasts, { id: ++serial, text, tone: "note" as const }].slice(-MAX_TOASTS));
 }
 
 export function dismissToast(id: number): void {

@@ -62,7 +62,7 @@ var ReadOnlyPrefixes = map[string]map[string]bool{
 		"blame": true, "grep": true, "ls-files": true, "ls-tree": true,
 		"rev-parse": true, "rev-list": true, "describe": true, "reflog": true,
 		"shortlog": true, "whatchanged": true, "cherry": true,
-		"cat-file": true, "for-each-ref": true, "name-rev": true,
+		"cat-file": true, "for-each-ref": true, "name-rev": true, "merge-base": true,
 	},
 	"go": {
 		"vet": true, "doc": true, "list": true,
@@ -143,6 +143,9 @@ func ClassifyReadOnlyFields(fields []string) (base, sub string, out []string, ok
 		}
 	}
 	if sub, ok := ghReadOnlyCall(fields); ok {
+		return base, sub, fields, true
+	}
+	if sub, ok := gitReadOnlyCall(fields); ok {
 		return base, sub, fields, true
 	}
 	return "", "", nil, false
@@ -276,6 +279,9 @@ func readOnlyFields(fields []string) (base, sub string, ok bool) {
 		}
 	}
 	if sub, ok := ghReadOnlyCall(fields); ok {
+		return base, sub, true
+	}
+	if sub, ok := gitReadOnlyCall(fields); ok {
 		return base, sub, true
 	}
 	return "", "", false
