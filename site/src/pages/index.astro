@@ -170,7 +170,7 @@ const ld = {
       <div class="sec-head split reveal">
         <span class="kicker"><span class="l-en">Surfaces</span><span class="l-zh">使用形态</span></span>
         <h2><span class="l-en">Four ways to use it. <span class="em">Same program.</span></span><span class="l-zh">四种用法，<span class="em">同一套程序。</span></span></h2>
-        <p><span class="l-en">Four ways to use Reasonix, all running the same program. Studio and the command line are both on the 2.x line; the 1.x desktop app is the previous line.</span><span class="l-zh">四种用法，背后是同一套程序。Studio 与命令行同属 2.x 版本线；1.x 桌面端是上一代版本线。</span></p>
+        <p><span class="l-en">Four ways to use Reasonix, all running the same program. Studio and the command line are both on the 2.x line; the 1.x desktop app is the previous line, kept for bug fixes only.</span><span class="l-zh">四种用法，背后是同一套程序。Studio 与命令行同属 2.x 版本线；1.x 桌面端是上一代版本线，只做缺陷维护。</span></p>
       </div>
       <div class="surf-grid">
         <div class="surf reveal">
@@ -182,7 +182,7 @@ const ld = {
           </div>
           <h3><span class="l-en">Desktop app · Studio</span><span class="l-zh">桌面端 · Studio</span></h3>
           <p><span class="l-en">A graphical app: several sessions side by side, approvals, settings, auto-update.</span><span class="l-zh">图形界面：多个会话并排，确认操作、改设置、自动更新。</span></p>
-          <code><span class="l-en">macOS (Apple Silicon, Intel) · Windows x64 · Linux amd64 (.deb)</span><span class="l-zh">macOS（Apple Silicon、Intel）· Windows x64 · Linux amd64（.deb）</span></code>
+          <code><span class="l-en">macOS (Apple Silicon, Intel) · Windows x64 · Linux amd64 and arm64 (.deb, .rpm)</span><span class="l-zh">macOS（Apple Silicon、Intel）· Windows x64 · Linux amd64 与 arm64（.deb、.rpm）</span></code>
         </div>
         <div class="surf reveal" style="--d:0.06s">
           <div class="surf-art" aria-hidden="true">
@@ -302,11 +302,11 @@ const ld = {
     <div class="dl reveal" style="--d:0.14s">
       <div class="dl-tabs" role="tablist" aria-label="Download method / 下载方式">
         <button class="dl-tab active" id="download-tab-studio" type="button" data-pane="studio" role="tab" aria-controls="download-pane-studio" aria-selected="true" tabindex="0">Studio</button>
-        <button class="dl-tab" id="download-tab-desktop" type="button" data-pane="desktop" role="tab" aria-controls="download-pane-desktop" aria-selected="false" tabindex="-1"><span class="l-en">Desktop 1.x</span><span class="l-zh">桌面端 1.x</span></button>
         <button class="dl-tab" id="download-tab-cli" type="button" data-pane="cli" role="tab" aria-controls="download-pane-cli" aria-selected="false" tabindex="-1"><span class="l-en">Command line 2.x</span><span class="l-zh">命令行 2.x</span></button>
         <button class="dl-tab" id="download-tab-npm" type="button" data-pane="npm" role="tab" aria-controls="download-pane-npm" aria-selected="false" tabindex="-1">npm</button>
         <button class="dl-tab" id="download-tab-brew" type="button" data-pane="brew" role="tab" aria-controls="download-pane-brew" aria-selected="false" tabindex="-1">Homebrew</button>
         <button class="dl-tab" id="download-tab-vscode" type="button" data-pane="vscode" role="tab" aria-controls="download-pane-vscode" aria-selected="false" tabindex="-1"><span class="l-en">Editor extension</span><span class="l-zh">编辑器扩展</span></button>
+        <button class="dl-tab dl-tab--legacy" id="download-tab-desktop" type="button" data-pane="desktop" role="tab" aria-controls="download-pane-desktop" aria-selected="false" tabindex="-1"><span class="l-en">1.x · maintenance only</span><span class="l-zh">1.x · 仅维护</span></button>
       </div>
 
       <div class="version-guide" aria-label="Reasonix version lines / Reasonix 版本选择">
@@ -324,7 +324,7 @@ const ld = {
         <div class="release-channel-summary" data-release-summary="studio" aria-live="polite">
           <span><span class="l-en">Reasonix Studio 2.x · <span data-release-version="studio">latest</span></span><span class="l-zh">Reasonix Studio 2.x · <span data-release-version="studio">latest</span></span></span>
         </div>
-        <p class="dl-platform-note" data-platform-note hidden><span class="l-en">Studio is a desktop app with builds for macOS (Apple Silicon, Intel), Windows x64 and Linux amd64 (.deb). <span data-platform-reason="mobile">Open this page on a computer to download it.</span><span data-platform-reason="chromeos">None matches ChromeOS.</span><span data-platform-reason="arm-linux">None matches Linux on ARM.</span> The 2.x command line below has more platforms.</span><span class="l-zh">Studio 是桌面应用，提供 macOS（Apple Silicon、Intel）、Windows x64 与 Linux amd64（.deb）安装包。<span data-platform-reason="mobile">请在电脑上打开本页下载。</span><span data-platform-reason="chromeos">暂无适用于 ChromeOS 的安装包。</span><span data-platform-reason="arm-linux">暂无适用于 ARM 架构 Linux 的安装包。</span>下方的 2.x 命令行支持更多平台。</span></p>
+        <p class="dl-platform-note" data-platform-note hidden><span class="l-en">Studio is a desktop app with builds for macOS (Apple Silicon, Intel), Windows x64, and Linux amd64 and arm64 (.deb, .rpm). <span data-platform-reason="mobile">Open this page on a computer to download it.</span><span data-platform-reason="chromeos">None matches ChromeOS.</span><span data-platform-reason="arm-linux">None matches 32-bit ARM Linux.</span> The 2.x command line below has more platforms.</span><span class="l-zh">Studio 是桌面应用，提供 macOS（Apple Silicon、Intel）、Windows x64 与 Linux（amd64、arm64，.deb、.rpm）安装包。<span data-platform-reason="mobile">请在电脑上打开本页下载。</span><span data-platform-reason="chromeos">暂无适用于 ChromeOS 的安装包。</span><span data-platform-reason="arm-linux">暂无适用于 32 位 ARM Linux 的安装包。</span>下方的 2.x 命令行支持更多平台。</span></p>
         <div class="os-grid">
           <div class="os-card" data-os="mac">
             <h4>macOS</h4>
@@ -342,8 +342,11 @@ const ld = {
           </div>
           <div class="os-card" data-os="linux">
             <h4>Linux</h4>
-            <span class="meta"><span class="l-en">Debian / Ubuntu package · amd64</span><span class="l-zh">Debian / Ubuntu 安装包 · amd64</span></span>
-            <a class="btn btn-light" href={studioReleases} data-studio-asset="ReasonixStudio-linux-amd64.deb"><span class="l-en">Download .deb · <span data-release-version="studio">latest</span></span><span class="l-zh">下载 .deb · <span data-release-version="studio">latest</span></span></a>
+            <span class="meta"><span class="l-en">.deb (Debian / Ubuntu) and .rpm (Fedora / openSUSE) · amd64 and arm64</span><span class="l-zh">.deb（Debian / Ubuntu）与 .rpm（Fedora / openSUSE）· amd64 与 arm64</span></span>
+            <a class="btn btn-light" href={studioReleases} data-studio-asset="ReasonixStudio-linux-amd64.deb"><span class="l-en">.deb · amd64 · <span data-release-version="studio">latest</span></span><span class="l-zh">.deb · amd64 · <span data-release-version="studio">latest</span></span></a>
+            <a class="btn btn-light" href={studioReleases} data-studio-asset="ReasonixStudio-linux-amd64.rpm" data-studio-optional hidden><span class="l-en">.rpm · amd64 · <span data-release-version="studio">latest</span></span><span class="l-zh">.rpm · amd64 · <span data-release-version="studio">latest</span></span></a>
+            <a class="btn btn-light" href={studioReleases} data-studio-asset="ReasonixStudio-linux-arm64.deb" data-studio-optional hidden><span class="l-en">.deb · arm64 · <span data-release-version="studio">latest</span></span><span class="l-zh">.deb · arm64 · <span data-release-version="studio">latest</span></span></a>
+            <a class="btn btn-light" href={studioReleases} data-studio-asset="ReasonixStudio-linux-arm64.rpm" data-studio-optional hidden><span class="l-en">.rpm · arm64 · <span data-release-version="studio">latest</span></span><span class="l-zh">.rpm · arm64 · <span data-release-version="studio">latest</span></span></a>
           </div>
         </div>
         <div class="dl-note"><span class="l-en"><a href={studioReleases} data-release-notes="studio">Release notes →</a> · <a href={studioReleases}>all Studio releases →</a></span><span class="l-zh"><a href={studioReleases} data-release-notes="studio">更新说明 →</a> · <a href={studioReleases}>全部 Studio 版本 →</a></span></div>
@@ -356,7 +359,7 @@ const ld = {
 
       <div class="dl-pane" id="download-pane-desktop" data-pane="desktop" role="tabpanel" aria-labelledby="download-tab-desktop" hidden>
         <div class="release-channel-summary" data-release-summary="desktop" aria-live="polite">
-          <span><span class="l-en">Reasonix desktop 1.x (previous line) · <span data-release-version="desktop">{desktopVersionLabel}</span></span><span class="l-zh">Reasonix 桌面端 1.x（上一代）· <span data-release-version="desktop">{desktopVersionLabel}</span></span></span>
+          <span><span class="l-en">Reasonix desktop 1.x (previous line, maintenance only: bug fixes, no new features) · <span data-release-version="desktop">{desktopVersionLabel}</span></span><span class="l-zh">Reasonix 桌面端 1.x（上一代，仅维护：只修缺陷，不加新功能）· <span data-release-version="desktop">{desktopVersionLabel}</span></span></span>
         </div>
         <div class="os-grid">
           <div class="os-card" data-os="mac">
