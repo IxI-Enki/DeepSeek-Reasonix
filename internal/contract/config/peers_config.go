@@ -10,3 +10,6 @@ type PeersConfig struct {
 // PeersEnabled reports whether this session takes part in messages between
 // sessions.
 func (c *Config) PeersEnabled() bool { return c != nil && c.Peers.Enabled }
+
+// SetPeersEnabled records the user's choice in the user file.
+func (c *Config) SetPeersEnabled(on bool) { c.Peers.Enabled = on }

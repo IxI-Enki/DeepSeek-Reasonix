@@ -373,14 +373,15 @@ type ToolCallStopper interface {
 	CancelToolCall(id string) bool
 }
 
-// PeerMail is messages between sessions: who can be written to, sending, what
+// PeerMail is messages between sessions: who is listening, what
 // other sessions sent and the user has not decided, and the decision.
 type PeerMail interface {
 	PeersEnabled() bool
 	Peers() []PeerView
-	SendPeerMessage(to, text string) (PeerReceipt, error)
 	HeldPeerMessages() []PeerHeld
 	ResolvePeerMessage(id string, approve bool) error
+	PeersSettings() PeersSettings
+	SavePeersSettings(enabled bool) error
 }
 
 // DiffRendering reports the session's diff-rendering choices, resolved once at

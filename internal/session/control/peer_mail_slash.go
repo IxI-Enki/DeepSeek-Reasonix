@@ -7,8 +7,7 @@ import (
 )
 
 // peerCommand serves /peer for the frontends that route raw input through
-// Submit: list, send, approve, deny. The name to send to is one word, or quoted
-// when a title has spaces.
+// Submit: list what is listening and what is held, approve, deny.
 func (c *Controller) peerCommand(args string) {
 	if !c.PeersEnabled() {
 		c.notice("messages between sessions are not turned on (peers.enabled in your user config)")
@@ -19,18 +18,6 @@ func (c *Controller) peerCommand(args string) {
 	switch strings.ToLower(verb) {
 	case "", "list":
 		c.notice(c.peerListText())
-	case "send":
-		name, text, ok := splitPeerName(rest)
-		if !ok {
-			c.notice(`usage: /peer send <session> <text>   (quote the session if its title has spaces: "my title")`)
-			return
-		}
-		rec, err := c.SendPeerMessage(name, text)
-		if err != nil {
-			c.notice("peer send: " + peerErrorText(err))
-			return
-		}
-		c.notice(fmt.Sprintf("sent %s to %s; it waits there until that session's user approves it", rec.ID, peerLabel(rec.To)))
 	case "approve", "deny":
 		if rest == "" {
 			c.notice("usage: /peer " + verb + " <message id>")
@@ -42,7 +29,7 @@ func (c *Controller) peerCommand(args string) {
 		}
 		c.notice("peer " + strings.ToLower(verb) + ": " + rest + " done")
 	default:
-		c.notice("usage: /peer [list | send <session> <text> | approve <id> | deny <id>]")
+		c.notice("usage: /peer [list | approve <id> | deny <id>]")
 	}
 }
 
@@ -52,7 +39,7 @@ func (c *Controller) peerListText() string {
 	if len(peers) == 0 {
 		b.WriteString("no other session is listening on this machine")
 	} else {
-		b.WriteString("sessions you can message:")
+		b.WriteString("sessions listening on this machine:")
 		for _, p := range peers {
 			b.WriteString("\n  " + peerLabel(p) + "  (" + p.Key + ")")
 		}
@@ -71,24 +58,6 @@ func peerLabel(p PeerView) string {
 		return p.Title
 	}
 	return p.Key
-}
-
-func splitPeerName(rest string) (name, text string, ok bool) {
-	if strings.HasPrefix(rest, `"`) {
-		end := strings.Index(rest[1:], `"`)
-		if end < 0 {
-			return "", "", false
-		}
-		name, text = rest[1:1+end], strings.TrimSpace(rest[end+2:])
-	} else {
-		var found bool
-		name, text, found = strings.Cut(rest, " ")
-		if !found {
-			return "", "", false
-		}
-		text = strings.TrimSpace(text)
-	}
-	return name, text, name != "" && text != ""
 }
 
 func peerErrorText(err error) string {

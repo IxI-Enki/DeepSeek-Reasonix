@@ -12,6 +12,7 @@ import (
 	"reasonix/internal/base/testenv"
 	"reasonix/internal/contract/config"
 	"reasonix/internal/session/control"
+	"reasonix/internal/state/peermail"
 )
 
 func peerServer(t *testing.T, peersDir string, name string) *httptest.Server {
@@ -35,24 +36,33 @@ func peerServer(t *testing.T, peersDir string, name string) *httptest.Server {
 	return srv
 }
 
-func TestPeerRoutesRefuseWithTheirOwnCodes(t *testing.T) {
+func TestPeerSettingsRoutesReadAndSaveTheUserFileChoice(t *testing.T) {
+	t.Setenv("REASONIX_HOME", testenv.TempDir(t))
+	srv := peerServer(t, "", "settings")
+	res, err := http.Get(srv.URL + "/peers/settings")
+	if err != nil {
+		t.Fatal(err)
+	}
+	text, _ := readAll(res)
+	res.Body.Close()
+	if !strings.Contains(text, `"enabled":false`) {
+		t.Fatalf("default = %s, want off", text)
+	}
+	status, raw := postSide(t, srv.URL+"/peers/settings", map[string]any{"enabled": true})
+	if status != http.StatusOK || !strings.Contains(string(raw), `"enabled":true`) {
+		t.Fatalf("save = %d %s", status, raw)
+	}
+	if status, raw := postSide(t, srv.URL+"/peers/settings", map[string]any{}); status != http.StatusBadRequest {
+		t.Fatalf("no choice = %d %s", status, raw)
+	}
+}
+
+func TestPeerHeldRouteRefusesWithItsOwnCodes(t *testing.T) {
 	off := peerServer(t, "", "off")
-	if status, raw := postSide(t, off.URL+"/peers/send", map[string]any{"to": "x", "text": "hi"}); status != http.StatusConflict || !strings.Contains(string(raw), codePeersDisabled) {
+	if status, raw := postSide(t, off.URL+"/peers/held/m-1", map[string]any{"approve": true}); status != http.StatusConflict || !strings.Contains(string(raw), codePeersDisabled) {
 		t.Fatalf("off = %d %s", status, raw)
 	}
-	res, err := http.Get(off.URL + "/peers")
-	if err != nil || res.StatusCode != http.StatusOK {
-		t.Fatalf("list = %v %v", res, err)
-	}
-	res.Body.Close()
-
 	on := peerServer(t, filepath.Join(testenv.TempDir(t), "peers"), "on")
-	if status, raw := postSide(t, on.URL+"/peers/send", map[string]any{"to": "nobody", "text": "hi"}); status != http.StatusNotFound || !strings.Contains(string(raw), codePeerNotFound) {
-		t.Fatalf("unknown = %d %s", status, raw)
-	}
-	if status, raw := postSide(t, on.URL+"/peers/send", map[string]any{"to": "nobody", "text": " "}); status != http.StatusBadRequest || !strings.Contains(string(raw), codePeerEmpty) {
-		t.Fatalf("empty = %d %s", status, raw)
-	}
 	if status, raw := postSide(t, on.URL+"/peers/held/m-nope", map[string]any{"approve": true}); status != http.StatusNotFound || !strings.Contains(string(raw), codePeerNotHeld) {
 		t.Fatalf("not held = %d %s", status, raw)
 	}
@@ -61,43 +71,40 @@ func TestPeerRoutesRefuseWithTheirOwnCodes(t *testing.T) {
 	}
 }
 
-func TestAMessageSentOverOneServerIsHeldOnTheOther(t *testing.T) {
+func TestAHeldMessageShowsUpOnTheReceivingServerAndCanBeDecided(t *testing.T) {
 	peersDir := filepath.Join(testenv.TempDir(t), "peers")
-	a := peerServer(t, peersDir, "alpha")
 	b := peerServer(t, peersDir, "beta")
-	var key string
+	d, err := peermail.Open(peersDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var receiver string
 	deadline := time.Now().Add(10 * time.Second)
-	for key == "" && time.Now().Before(deadline) {
-		res, err := http.Get(a.URL + "/peers")
-		if err != nil {
-			t.Fatal(err)
+	for receiver == "" && time.Now().Before(deadline) {
+		live, _ := d.ListLive(func(peermail.Live) bool { return true })
+		if len(live) == 1 {
+			receiver = live[0].SessionID
 		}
-		buf := new(strings.Builder)
-		b2 := make([]byte, 4096)
-		n, _ := res.Body.Read(b2)
-		buf.Write(b2[:n])
-		res.Body.Close()
-		if i := strings.Index(buf.String(), `"key":"`); i >= 0 {
-			rest := buf.String()[i+7:]
-			key = rest[:strings.Index(rest, `"`)]
-		}
-		time.Sleep(100 * time.Millisecond)
+		time.Sleep(50 * time.Millisecond)
 	}
-	if key == "" {
-		t.Skip("the other session did not publish within the window")
+	if receiver == "" {
+		t.Fatal("the receiving session did not publish itself")
 	}
-	if status, raw := postSide(t, a.URL+"/peers/send", map[string]any{"to": key, "text": "hello"}); status != http.StatusOK {
-		t.Fatalf("send = %d %s", status, raw)
+	if err := d.Send(peermail.Message{ID: "m-1", SentAt: time.Now().UTC(), Body: "hello",
+		From: peermail.Party{SessionID: "s-0000000000000001", Title: "other"}, To: peermail.Party{SessionID: receiver}}); err != nil {
+		t.Fatal(err)
 	}
 	for time.Now().Before(deadline) {
 		res, err := http.Get(b.URL + "/peers")
 		if err != nil {
 			t.Fatal(err)
 		}
-		buf := make([]byte, 8192)
-		n, _ := res.Body.Read(buf)
+		raw, _ := readAll(res)
 		res.Body.Close()
-		if strings.Contains(string(buf[:n]), `"body":"hello"`) {
+		if strings.Contains(raw, `"body":"hello"`) {
+			if status, raw := postSide(t, b.URL+"/peers/held/m-1", map[string]any{"approve": false}); status != http.StatusNoContent {
+				t.Fatalf("deny = %d %s", status, raw)
+			}
 			return
 		}
 		time.Sleep(100 * time.Millisecond)

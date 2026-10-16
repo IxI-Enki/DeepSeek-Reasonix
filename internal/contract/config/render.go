@@ -223,6 +223,9 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 		b.WriteString("# output_style = \"explanatory\"   # explanatory | learning | concise | custom; empty = default\n")
 	}
 	b.WriteString("\n")
+	if scope != RenderScopeProject {
+		fmt.Fprintf(&b, "[peers]\nenabled = %t   # messages between sessions on this machine; off by default; user file only\n\n", c.Peers.Enabled)
+	}
 
 	if shouldRenderProviders(c, defaults, scope) {
 		for _, p := range c.Providers {

@@ -166,12 +166,14 @@ func countAudit(t *testing.T, peersDir, id string, d peermail.Decision) int {
 	return n
 }
 
-func TestPeerCommandSendsAndTheReceiverApprovesByIDFromItsOwnCommand(t *testing.T) {
+func TestPeerCommandApprovesAndDeniesByIDFromItsOwnCommand(t *testing.T) {
 	peersDir := filepath.Join(testenv.TempDir(t), "peers")
 	a := newPeerSession(t, peersDir, "alpha")
 	b := newPeerSession(t, peersDir, "beta")
 	a.peerIngest()
-	a.peerCommand("send " + b.peers.key + " look at the build")
+	if _, err := a.SendPeerMessage(b.peers.key, "look at the build"); err != nil {
+		t.Fatal(err)
+	}
 	b.peerIngest()
 	held := b.HeldPeerMessages()
 	if len(held) != 1 || held[0].Body != "look at the build" {
@@ -180,12 +182,6 @@ func TestPeerCommandSendsAndTheReceiverApprovesByIDFromItsOwnCommand(t *testing.
 	b.peerCommand("deny " + held[0].ID)
 	if got := b.HeldPeerMessages(); len(got) != 0 {
 		t.Fatalf("still held: %+v", got)
-	}
-	if name, text, ok := splitPeerName(`"my title" go`); !ok || name != "my title" || text != "go" {
-		t.Fatalf("quoted = %q %q %v", name, text, ok)
-	}
-	if _, _, ok := splitPeerName("alone"); ok {
-		t.Fatal("a name without text must not parse")
 	}
 }
 

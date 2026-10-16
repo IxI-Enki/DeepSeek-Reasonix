@@ -9,21 +9,15 @@ import (
 )
 
 const (
-	codePeersDisabled  = "peer.disabled"
-	codePeerNotFound   = "peer.not_found"
-	codePeerAmbiguous  = "peer.ambiguous"
-	codePeerSelf       = "peer.self"
-	codePeerRefused    = "peer.refused"
-	codePeerRateLimit  = "peer.rate_limited"
-	codePeerEmpty      = "peer.empty"
-	codePeerTooLarge   = "peer.too_large"
-	codePeerNotHeld    = "peer.not_held"
-	codePeerSendFailed = "peer.send_failed"
+	codePeersDisabled = "peer.disabled"
+	codePeerNotHeld   = "peer.not_held"
+	codePeerFailed    = "peer.failed"
 )
 
 func (s *Server) registerPeerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /peers", s.peers)
-	mux.HandleFunc("POST /peers/send", s.sendPeerMessage)
+	mux.HandleFunc("GET /peers/settings", s.peersSettings)
+	mux.HandleFunc("POST /peers/settings", s.savePeersSettings)
 	mux.HandleFunc("POST /peers/held/{id}", s.resolvePeerMessage)
 }
 
@@ -39,28 +33,32 @@ func (s *Server) peers(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, map[string]any{"enabled": ctl.PeersEnabled(), "peers": peers, "held": held})
 }
 
-// sendPeerMessage and resolvePeerMessage ride the provider-edit grant: a held
-// message becomes input to a model, so a networked client must not decide for
-// the machine's owner what another session is told.
-func (s *Server) sendPeerMessage(w http.ResponseWriter, r *http.Request) {
+func (s *Server) peersSettings(w http.ResponseWriter, _ *http.Request) {
+	writeJSON(w, s.ctl().PeersSettings())
+}
+
+// savePeersSettings and resolvePeerMessage ride the provider-edit grant: the
+// first opens a door between sessions and a held message becomes input to a
+// model, so a networked client must not decide either for the machine's owner.
+// Saving rebuilds nothing: a session decides at start, so the choice is for the
+// sessions opened afterwards.
+func (s *Server) savePeersSettings(w http.ResponseWriter, r *http.Request) {
 	if !s.grants.at(r).providerEdit {
 		refuse(w, http.StatusForbidden, "peer.editing_disabled", "messages between sessions are not enabled for this client", nil)
 		return
 	}
 	var body struct {
-		To   string `json:"to"`
-		Text string `json:"text"`
+		Enabled *bool `json:"enabled"`
 	}
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 256<<10)).Decode(&body); err != nil {
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10)).Decode(&body); err != nil || body.Enabled == nil {
 		badBody(w)
 		return
 	}
-	receipt, err := s.ctl().SendPeerMessage(body.To, body.Text)
-	if err != nil {
-		refusePeer(w, err)
+	if err := s.ctl().SavePeersSettings(*body.Enabled); err != nil {
+		saveFailed(w, http.StatusInternalServerError, "peer.save_failed", err)
 		return
 	}
-	writeJSON(w, receipt)
+	writeJSON(w, s.ctl().PeersSettings())
 }
 
 func (s *Server) resolvePeerMessage(w http.ResponseWriter, r *http.Request) {
@@ -86,23 +84,9 @@ func refusePeer(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, control.ErrPeersDisabled):
 		refuse(w, http.StatusConflict, codePeersDisabled, "messages between sessions are not enabled", nil)
-	case errors.Is(err, control.ErrPeerNotFound):
-		refuse(w, http.StatusNotFound, codePeerNotFound, "no session on this machine answers to that name", nil)
-	case errors.Is(err, control.ErrPeerAmbiguous):
-		refuse(w, http.StatusConflict, codePeerAmbiguous, "more than one session answers to that name", nil)
-	case errors.Is(err, control.ErrPeerSelf):
-		refuse(w, http.StatusBadRequest, codePeerSelf, "a session cannot message itself", nil)
-	case errors.Is(err, control.ErrPeerRefused):
-		refuse(w, http.StatusConflict, codePeerRefused, "that session does not accept messages", nil)
-	case errors.Is(err, control.ErrPeerRateLimited):
-		refuse(w, http.StatusTooManyRequests, codePeerRateLimit, "too many messages sent in a short time", nil)
-	case errors.Is(err, control.ErrPeerEmpty):
-		refuse(w, http.StatusBadRequest, codePeerEmpty, "a message needs some text", nil)
-	case errors.Is(err, control.ErrPeerTooLarge):
-		refuse(w, http.StatusRequestEntityTooLarge, codePeerTooLarge, "that message is too long", nil)
 	case errors.Is(err, control.ErrPeerNotHeld):
 		refuse(w, http.StatusNotFound, codePeerNotHeld, "that message is no longer waiting", nil)
 	default:
-		saveFailed(w, http.StatusInternalServerError, codePeerSendFailed, err)
+		saveFailed(w, http.StatusInternalServerError, codePeerFailed, err)
 	}
 }

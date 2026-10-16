@@ -136,9 +136,9 @@ export interface PeersState {
   held: PeerHeld[];
 }
 
-export interface PeerReceipt {
-  id: string;
-  to: PeerView;
+export interface PeersSettings {
+  enabled: boolean;
+  path: string;
 }
 
 export interface AutoArchiveSettings {

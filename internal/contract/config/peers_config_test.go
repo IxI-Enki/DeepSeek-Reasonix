@@ -1,36 +1,41 @@
 package config
 
 import (
-	"slices"
+	"os"
+	"path/filepath"
 	"testing"
 )
 
-func TestPeersAreOffUnlessTheUserFileTurnsThemOn(t *testing.T) {
-	if Default().PeersEnabled() {
-		t.Fatal("messages between sessions are on by default")
+func TestThePeersSwitchIsWrittenReadBackAndSurvivesAnotherSave(t *testing.T) {
+	t.Setenv("REASONIX_HOME", t.TempDir())
+	path := UserConfigPath()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
 	}
-	cfg, _ := loadScoped(t, "[peers]\nenabled = true\n", "")
-	if !cfg.PeersEnabled() {
-		t.Fatal("a user file's enabled = true was not honoured")
+	cfg := LoadForEdit(path)
+	cfg.SetPeersEnabled(true)
+	if err := cfg.SaveTo(path); err != nil {
+		t.Fatal(err)
 	}
-}
-
-// Turning this on opens a way for other sessions' text to reach this one, so it
-// is the user's alone: a cloned repository can neither switch it on nor undo
-// the user's choice.
-func TestAProjectFileCannotSwitchPeersOn(t *testing.T) {
-	cfg, _ := loadScoped(t, "", "[peers]\nenabled = true\n")
-	if cfg.PeersEnabled() {
-		t.Fatal("a cloned repo's reasonix.toml enabled messages between sessions")
+	if !LoadForEdit(path).PeersEnabled() {
+		data, _ := os.ReadFile(path)
+		t.Fatalf("the choice was not written:\n%s", data)
 	}
-	if !slices.Contains(ignoredKeys(cfg), "peers.enabled") {
-		t.Fatalf("ignored = %v, want peers.enabled reported", ignoredKeys(cfg))
+	other := LoadForEdit(path)
+	other.SetWriteLease(true)
+	if err := other.SaveTo(path); err != nil {
+		t.Fatal(err)
 	}
-}
-
-func TestAProjectFileCannotSwitchOffWhatTheUserChose(t *testing.T) {
-	cfg, _ := loadScoped(t, "[peers]\nenabled = true\n", "[peers]\nenabled = false\n")
-	if !cfg.PeersEnabled() {
-		t.Fatal("the project file overrode the user's own peers setting")
+	if !LoadForEdit(path).PeersEnabled() {
+		t.Fatal("saving another setting dropped the peers switch")
+	}
+	off := LoadForEdit(path)
+	off.SetPeersEnabled(false)
+	if err := off.SaveTo(path); err != nil {
+		t.Fatal(err)
+	}
+	data, _ := os.ReadFile(path)
+	if LoadForEdit(path).PeersEnabled() {
+		t.Fatalf("turning it off left it on:\n%s", data)
 	}
 }

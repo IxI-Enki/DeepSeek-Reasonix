@@ -1,4 +1,4 @@
-import type { Adjudications, BrowserToolsSettings, SubagentClaimsSettings, WriteLeaseSettings, PeerReceipt, PeersState, ConfigProblem, ConfigRepair, PermissionLists, PermissionRules, SandboxSettings, UpdateMode } from "./port";
+import type { Adjudications, BrowserToolsSettings, SubagentClaimsSettings, WriteLeaseSettings, PeersSettings, PeersState, ConfigProblem, ConfigRepair, PermissionLists, PermissionRules, SandboxSettings, UpdateMode } from "./port";
 import type { AskTimeoutSettings, AutoArchiveSettings, ChangedFilesSettings, FoldWorkSettings, TurnNarrationSettings, DisplayCurrencyMode, DisplayCurrencySettings, ProgressWatchSettings, WorkspaceRoots, ReceiptSettings } from "./boundary";
 import { HttpError } from "./http_error";
 import { MockShell } from "./mock_shell";
@@ -165,10 +165,15 @@ export class MockBoundary extends MockShell {
     return { ...this.peerState, peers: [...this.peerState.peers], held: [...this.peerState.held] };
   }
 
-  async sendPeerMessage(to: string, text: string): Promise<PeerReceipt> {
-    const target = this.peerState.peers.find((p) => p.key === to || p.title === to);
-    if (!target) throw new Error("no session answers to that name");
-    return { id: `m-${text.length}`, to: target };
+  private peerSwitch: PeersSettings = { enabled: false, path: "/Users/you/.reasonix/config.toml" };
+
+  async peersSettings(): Promise<PeersSettings> {
+    return { ...this.peerSwitch };
+  }
+
+  async savePeersSettings(enabled: boolean): Promise<PeersSettings> {
+    this.peerSwitch = { ...this.peerSwitch, enabled };
+    return { ...this.peerSwitch };
   }
 
   async resolvePeerMessage(id: string, _approve: boolean): Promise<void> {
